@@ -1,0 +1,160 @@
+#pragma once
+
+typedef enum {
+	TK_ILLEGAL,
+	TK_EOF,
+	TK_VAR,
+
+	TK_R_PUSH,
+	TK_R_POP,
+
+	TK_R_ELSE,
+	TK_R_FOREACH,
+	TK_R_BREAK,
+	TK_IF, //if
+	TK_WHILE, //while
+	TK_R_FOR, //for
+	TK_RETURN, //return
+	TK_R_NEW,
+	TK_R_NULL,
+	TK_R_TRUE,
+	TK_R_FALSE,
+	TK_DOLLAR,
+	TK_R_THREAD,
+	TK_WAITTILL,
+	TK_R_WAIT,
+	TK_ENDON,
+	TK_NOTIFY,
+
+	TK_R_LEVEL,
+	TK_R_SELF,
+
+	TK_MODULO, //%
+	TK_DIVIDE, ///
+	TK_MULTIPLY, //*
+
+	TK_LPAREN, //(
+	TK_RPAREN, //)
+	TK_EQUALS, //==
+	TK_ASSIGN, //=
+	TK_LBRACK, //[
+	TK_RBRACK, //]
+	TK_LBRACE, //{
+	TK_RBRACE, //}
+	TK_COMMA, //,
+	TK_COLON, //:
+	TK_SEMICOLON, //;
+
+	TK_AND,
+	TK_OR,
+	TK_AND_AND, //&&
+	TK_OR_OR, //||
+	TK_NOTEQUAL, //!=
+
+	TK_GEQUAL, //>=
+	TK_LEQUAL, //<=
+
+	TK_PLUS_ASSIGN, //+=
+	TK_MINUS_ASSIGN, //-=
+
+	TK_DIVIDE_ASSIGN,
+	TK_MULTIPLY_ASSIGN,
+
+	TK_MEMBER_SEPERATOR, //->
+
+	TK_LESS, //<
+	TK_GREATER, //>
+	TK_PLUS_PLUS, //++
+	TK_MINUS_MINUS, //--
+	TK_PLUS, //+
+	TK_MINUS, //-
+	TK_DOT, //.
+	TK_NOT, //!
+
+	TK_BACKSLASH,
+
+	TK_REF,
+	TK_CHAR, //'a'
+	TK_IDENT, //test
+	TK_STRING, //"test"
+	TK_INT, //1
+	TK_FLOAT, //1.2
+	TK_END_OF_LIST
+} e_lex_tokens;
+
+const static char *lex_token_strings[] = {
+	"TK_ILLEGAL",
+	"TK_EOF",
+	"TK_VAR",
+
+	"TK_R_PUSH",
+	"TK_R_POP",
+
+	"TK_R_ELSE",
+	"TK_R_FOREACH",
+	"TK_R_BREAK",
+	"TK_IF",
+	"TK_WHILE",
+	"TK_R_FOR",
+	"TK_RETURN",
+	"TK_R_NEW",
+	"TK_R_NULL",
+	"TK_R_TRUE",
+	"TK_R_FALSE",
+	"TK_DOLLAR",
+	"TK_THREAD",
+	"TK_WAITTILL",
+	"TK_R_WAIT",
+	"TK_ENDON",
+	"TK_NOTIFY",
+
+	"TK_R_LEVEL",
+	"TK_R_SELF",
+	"TK_MODULO",
+	"TK_DIVIDE",
+	"TK_MULTIPLY",
+
+	"TK_LPAREN",
+	"TK_RPAREN",
+	"TK_EQUALS",
+	"TK_ASSIGN",
+	"TK_LBRACK",
+	"TK_RBRACK",
+	"TK_LBRACE",
+	"TK_RBRACE",
+	"TK_COMMA",
+	"TK_COLON",
+	"TK_SEMICOLON",
+
+	"TK_AND",
+	"TK_OR",
+	"TK_AND_AND",
+	"TK_OR_OR",
+	"TK_NOTEQUAL",
+
+	"TK_GEQUAL",
+	"TK_LEQUAL",
+	"TK_PLUS_ASSIGN",
+	"TK_MINUS_ASSIGN",
+	"TK_DIVIDE_ASSIGN",
+	"TK_MULTIPLY_ASSIGN",
+
+	"TK_MEMBER_SEPERATOR",
+
+	"TK_LESS",
+	"TK_GREATER",
+	"TK_PLUS_PLUS",
+	"TK_MINUS_MINUS",
+	"TK_PLUS",
+	"TK_MINUS",
+	"TK_DOT",
+	"TK_NOT",
+	"TK_BACKSLASH",
+	"TK_REF",
+	"TK_CHAR",
+	"TK_IDENT",
+	"TK_STRING",
+	"TK_INT",
+	"TK_FLOAT",
+	"TK_END_OF_LIST",
+};
