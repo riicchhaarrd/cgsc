@@ -17,230 +17,11 @@ static int read_text_file(const char *filename, char **buf, int *filesize) {
 	return 0;
 }
 
-#ifdef _WIN32
-#include <WinSock2.h>
-#pragma comment(lib, "ws2_32.lib")
-
-int filter_http_page(char **page, size_t *page_len) {
-	char *f = strstr(*page, "\r\n\r\n");
-	if (f == NULL)
-		return 0;
-	size_t diff = f - *page;
-	size_t filtered_len = *page_len - diff;
-
-	char *filtered = (char*)malloc(filtered_len);
-	memset(filtered, 0, filtered_len);
-	memcpy(filtered, *page + diff, filtered_len);
-	free(*page);
-	*page = filtered;
-	*page_len = filtered_len;
-	return 1;
-}
-
-int fetch_http_page(const char *uri, /*OUT*/ char **page, /*OUT*/ size_t *page_len) {
-	*page = NULL;
-	*page_len = 0;
-
-	static bool wsadone = false;
-	if (!wsadone) {
-		static WSADATA wsaData;
-		WSAStartup(MAKEWORD(2, 0), &wsaData);
-		wsadone = true;
-	}
-
-#define DEFAULT_HTTP_PORT 80
-#define FETCH_BUF_SIZE 4096
-	char buf[FETCH_BUF_SIZE];
-	struct sockaddr_in addr;
-	int sock;
-
-	char split[128] = { 0 };
-	snprintf(split, sizeof(split), "%s", uri);
-
-	char *tmp = strstr(split, "http://");
-
-	if (tmp != NULL) {
-		tmp += 7;
-	}
-	else
-		tmp = split;
-
-	char *sep = strchr(tmp, '/');
-	if (sep == NULL)
-		return 0;
-
-	char *file = sep + 1;
-	*sep = '\0';
-	char *shost = tmp;
-
-	char request[256] = { 0 };
-	snprintf(request, sizeof(request), "GET /%s HTTP/1.1\r\nHost: %s\r\n\r\n", file, shost);
-	//printf("request=%s\n", request);
-
-	if ((sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
-		return 0;
-
-	struct hostent *he = gethostbyname(shost);
-	if (he == NULL) return 0;
-	struct in_addr *_addr = (struct in_addr*)he->h_addr;
-
-	memset(&addr.sin_zero, 0, sizeof(addr.sin_zero));
-	addr.sin_family = AF_INET;
-	addr.sin_addr.S_un.S_addr = _addr->S_un.S_addr;
-	addr.sin_port = htons(DEFAULT_HTTP_PORT);
-
-	if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0)
-		return 0;
-
-	int request_len = strlen(request) + 1;
-	if (send(sock, request, request_len, 0) != request_len) {
-		return 0;
-	}
-
-	int nrecv = recv(sock, buf, FETCH_BUF_SIZE, 0);
-	while (nrecv != INVALID_SOCKET && nrecv > 0) {
-		size_t to_copy_len = (nrecv > FETCH_BUF_SIZE) ? FETCH_BUF_SIZE : nrecv;
-		*page_len += to_copy_len;
-		void *_alloc = realloc(*page, *page_len);
-		if (!_alloc) {
-			free(*page);
-			*page = NULL;
-			*page_len = 0;
-			return 0;
-		}
-		*page = (char*)_alloc;
-		//memcpy(*page + *page_len - FETCH_BUF_SIZE, buf, to_copy_len);
-		strncpy(*page + *page_len - to_copy_len, buf, to_copy_len);
-		ZeroMemory(buf, FETCH_BUF_SIZE);
-		nrecv = recv(sock, buf, FETCH_BUF_SIZE, 0);
-	}
-	return filter_http_page(page, page_len);
-}
-
-int sf_fetch_page(vm_t *vm) {
-	const char *url = se_getstring(vm, 0);
-	char *page;
-	size_t page_len;
-	int result = fetch_http_page(url, &page, &page_len);
-
-	if (result == 0) {
-		se_addstring(vm, "fail");
-	}
-	else {
-		se_addstring(vm, page);
-		free(page);
-	}
-	return 1;
-}
-#endif
-
 int sf_print(vm_t *vm) {
 	for (int i = 0; i < se_argc(vm); i++)
 		printf("%s", se_getstring(vm, i));
 	return 0;
 }
-
-#ifdef _WIN32
-#include <ole2.h>
-#include <olectl.h>
-
-bool saveBitmap(const char *filename, HBITMAP bmp, HPALETTE pal)
-{
-	bool result = false;
-	PICTDESC pd;
-
-	pd.cbSizeofstruct = sizeof(PICTDESC);
-	pd.picType = PICTYPE_BITMAP;
-	pd.bmp.hbitmap = bmp;
-	pd.bmp.hpal = pal;
-
-	LPPICTURE picture;
-	HRESULT res = OleCreatePictureIndirect(&pd, IID_IPicture, false,
-		reinterpret_cast<void**>(&picture));
-
-	if (!SUCCEEDED(res))
-		return false;
-
-	LPSTREAM stream;
-	res = CreateStreamOnHGlobal(0, true, &stream);
-
-	if (!SUCCEEDED(res))
-	{
-		picture->Release();
-		return false;
-	}
-
-	LONG bytes_streamed;
-	res = picture->SaveAsFile(stream, true, &bytes_streamed);
-
-	HANDLE file = CreateFileA(filename, GENERIC_WRITE, FILE_SHARE_READ, 0,
-		CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
-
-	if (!SUCCEEDED(res) || !file)
-	{
-		stream->Release();
-		picture->Release();
-		return false;
-	}
-
-	HGLOBAL mem = 0;
-	GetHGlobalFromStream(stream, &mem);
-	LPVOID data = GlobalLock(mem);
-
-	DWORD bytes_written;
-
-	result = !!WriteFile(file, data, bytes_streamed, &bytes_written, 0);
-	result &= (bytes_written == static_cast<DWORD>(bytes_streamed));
-
-	GlobalUnlock(mem);
-	CloseHandle(file);
-
-	stream->Release();
-	picture->Release();
-
-	return result;
-}
-
-bool capture_screen(int x, int y, int width, int height) {
-	float target_size = 512.f;
-	float fw = (float)width;
-	float fh = (float)height;
-	int resize_x = (fw / (fw / target_size));
-	int resize_y = (fh / (fw / target_size));
-
-	HDC hDC = CreateCompatibleDC(0);
-	HBITMAP hBmp = CreateCompatibleBitmap(GetDC(0), resize_x, resize_y);
-	SelectObject(hDC, hBmp);
-	//BitBlt(hDC, 0, 0, width, height, GetDC(0), x, y, SRCCOPY);
-	StretchBlt(hDC, x, y, resize_x, resize_y,
-		GetDC(0), 0, 0, width ,height, SRCCOPY);
-	//BitmapToJpg(hBmp, width, height);
-	//saveBitmap("screen.bmp", hBmp, NULL);
-	DeleteObject(hBmp);
-	return true;
-}
-
-int sf_frame_screen(vm_t *vm) {
-	int x = se_getint(vm, 0);
-	int y = se_getint(vm, 1);
-	int w = se_getint(vm, 2);
-	int h = se_getint(vm, 3);
-	capture_screen(x, y, w, h);
-	return 0;
-}
-
-int sf_get_screen_width(vm_t *vm) {
-	int w = GetSystemMetrics(SM_CXSCREEN);
-	se_addint(vm, w);
-	return 1;
-}
-
-int sf_get_screen_height(vm_t *vm) {
-	int h = GetSystemMetrics(SM_CYSCREEN);
-	se_addint(vm, h);
-	return 1;
-}
-#endif
 
 int sf_println(vm_t *vm) {
 	for (int i = 0; i < se_argc(vm); i++)
@@ -315,15 +96,6 @@ int sf_isdefined(vm_t *vm) {
 	varval_t *vv = se_argv(vm, 0);
 	se_addbool(vm, VV_TYPE(vv) != VAR_TYPE_NULL);
 	return 1;
-}
-
-int sf_sleep(vm_t *vm) {
-	int ms = se_getint(vm, 0);
-	//TODO add sys_sleep here for linux stuff usleep etc cross platform
-#ifdef _WIN32
-	Sleep(ms);
-#endif
-	return 0;
 }
 
 int sf_typeof(vm_t *vm) {
@@ -558,25 +330,6 @@ int sf_write_text_file(vm_t *vm) {
 	return 0;
 }
 
-#ifdef _WIN32
-#include <windows.h>
-
-int sf_setpixel(vm_t *vm) {
-	float xyz[3];
-	se_getvector(vm, 0, xyz);
-	float rgb[3];
-	se_getvector(vm, 1, rgb);
-#ifdef _WIN32
-	HWND console_hwnd = GetConsoleWindow();
-	HDC console_hdc = GetDC(console_hwnd);
-
-	SetPixelV(console_hdc, (int)xyz[0], (int)xyz[1], RGB((int)rgb[0], (int)rgb[1], (int)rgb[2]));
-	ReleaseDC(console_hwnd, console_hdc);
-#endif
-	return 0;
-}
-#endif
-
 int sf_int(vm_t *vm) {
 	int i = se_getint(vm, 0);
 	se_addint(vm, i);
@@ -607,14 +360,6 @@ stockfunction_t std_scriptfunctions[] = {
 	{ "read_text_file", sf_read_text_file },
 	{ "write_text_file", sf_write_text_file },
 	
-#ifdef _WIN32
-	{ "fetch_page", sf_fetch_page },
-	{ "setpixel",sf_setpixel },
-	{ "frame_screen",sf_frame_screen },
-	{ "get_screen_height",sf_get_screen_height },
-	{"get_screen_width",sf_get_screen_width},
-#endif
-	
 	{ "print", sf_print },
 	{ "println", sf_println },
 	{ "fopen", sf_fopen },
@@ -637,7 +382,6 @@ stockfunction_t std_scriptfunctions[] = {
 	{ "randomint", sf_randomint },
 	{"randomfloat", sf_randomfloat},
 	{"spawnstruct", sf_spawnstruct},
-	{ "sleep",sf_sleep },
 	{"typeof",sf_typeof},
 	{NULL,NULL},
 };
