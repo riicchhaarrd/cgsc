@@ -127,9 +127,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <Text Include="ReadMe.txt" />
-  </ItemGroup>
-  <ItemGroup>
     <ClCompile Include="..\src\compiler.c" />
     <ClCompile Include="..\src\cvector.c" />
     <ClCompile Include="..\src\scr_defaultlib.c" />
