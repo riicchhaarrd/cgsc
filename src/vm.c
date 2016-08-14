@@ -1293,19 +1293,19 @@ void vm_free(vm_t *vm) {
 	int num_vars_left = vector_count(&vm->vars);
 	printf("num vars left =%d\n", num_vars_left);
 
+	se_vv_free_force(vm, vm->level);
+
 	//not sure about this, after long time not working on this forgot really what i intended, but i think this should be ok ish
 	//try normally
 	for (int i = vector_count(&vm->vars) - 1; i > -1; i--) {
 		varval_t *vv = (varval_t*)vector_get(&vm->vars, i);
-		if (vv->refs > 0) {
+		/*if (vv->refs > 0) {
 			int loc = vector_locate(&vm->vars, vv);
 			if (loc != -1)
 				vector_delete(&vm->vars, loc);
-		} else
-			se_vv_free(vm, vv);
+		} else */
+			se_vv_free_force(vm, vv);
 	}
-
-	se_vv_free_force(vm, vm->level);
 
 	vector_free(&vm->vars);
 
