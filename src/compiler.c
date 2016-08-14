@@ -464,7 +464,7 @@ static void program_add_opcode(parser_t *pp, uint8_t opcode) {
 
 	pp->program[pp->program_counter++] = opcode;
 	const char *opcode_str = opcode < OP_END_OF_LIST ? e_opcodes_strings[opcode] : "[not opcode]";
-	printf("program_add_opcode(%s) => %d (0x%x)\n", opcode_str, opcode, opcode);
+	//printf("program_add_opcode(%s) => %d (0x%x)\n", opcode_str, opcode, opcode);
 }
 
 static void program_add_int(parser_t *pp, uint32_t i) {
@@ -480,7 +480,7 @@ static void program_add_int(parser_t *pp, uint32_t i) {
 	*(int*)(pp->program + pp->program_counter) = i;
 	pp->program_counter += sizeof(int);
 #endif
-	printf("program_add_int(%d) => %x, %x, %x, %x\n", i, i & 0xff, (i>>8)&0xff,(i>>16)&0xff,(i>>24)&0xff);
+	//printf("program_add_int(%d) => %x, %x, %x, %x\n", i, i & 0xff, (i>>8)&0xff,(i>>16)&0xff,(i>>24)&0xff);
 }
 
 static void program_add_float(parser_t *pp, float i) {
@@ -496,7 +496,7 @@ static void program_add_float(parser_t *pp, float i) {
 	*(float*)(pp->program + pp->program_counter) = i;
 	pp->program_counter += sizeof(float);
 #endif
-	printf("program_add_float(%f)\n", i);
+	//printf("program_add_float(%f)\n", i);
 }
 
 static void program_add_short(parser_t *pp, int i) {
@@ -640,36 +640,36 @@ static int parser_factor(parser_t *pp) {
 
 			no_args_lol:
 
-				printf("function call with RETURN !!!! %s()\n", id);
+				//printf("function call with RETURN !!!! %s()\n", id);
+				{
+					bool found = false;
+					for (int i = 0; i <= pp->code_segment_size; i++) {
+						code_segment_t *seg = &pp->code_segments[i];
+						if (!strcmp(seg->id, id)) {
+							found = true;
+							program_add_opcode(pp, OP_CALL);
+							pp->current_segment->relocations[pp->current_segment->relocation_size++] = pp->program_counter;
+							program_add_int(pp, seg->original_loc);
+							program_add_int(pp, numargs);
+							break;
+						}
+					}
 
-				bool found = false;
-				for (int i = 0; i <= pp->code_segment_size; i++) {
-					code_segment_t *seg = &pp->code_segments[i];
-					if (!strcmp(seg->id, id)) {
-						found = true;
-						program_add_opcode(pp, OP_CALL);
-						pp->current_segment->relocations[pp->current_segment->relocation_size++] = pp->program_counter;
-						program_add_int(pp, seg->original_loc);
+					if (!found) {
+
+						//just add it to the 'builtin' funcs and maybe that works? :D
+						//printf("function '%s' does not exist!\n", id);
+						program_add_opcode(pp, OP_CALL_BUILTIN);
+
+						scr_istring_t *istr = NULL;
+						int index = parser_find_indexed_string(pp, id, &istr);
+
+						if (istr == NULL)
+							index = parser_create_indexed_string(pp, id);
+						program_add_int(pp, index); //the index of string
 						program_add_int(pp, numargs);
-						break;
 					}
 				}
-
-				if (!found) {
-
-					//just add it to the 'builtin' funcs and maybe that works? :D
-					//printf("function '%s' does not exist!\n", id);
-					program_add_opcode(pp, OP_CALL_BUILTIN);
-
-					scr_istring_t *istr = NULL;
-					int index = parser_find_indexed_string(pp, id, &istr);
-
-					if (istr == NULL)
-						index = parser_create_indexed_string(pp, id);
-					program_add_int(pp, index); //the index of string
-					program_add_int(pp, numargs);
-				}
-
 		} else {
 
 			if (parser_variable(pp, pp->string, true, false, NULL))
@@ -1343,7 +1343,7 @@ static int parser_statement(parser_t *pp) {
 
 				if (!pp_accept(pp, TK_LBRACE)) {
 					//func call
-					printf("function call %s()\n", id);
+					//printf("function call %s()\n", id);
 
 					bool found = false;
 					for (int i = 0; i <= pp->code_segment_size; i++) {
@@ -1386,7 +1386,7 @@ static int parser_statement(parser_t *pp) {
 				}
 				else {
 
-					printf("func definition %s\n", id);
+					//printf("func definition %s\n", id);
 
 					if (TK_EOF == parser_locate_token(pp, TK_RBRACE, &at, TK_LBRACE)) {
 						printf("could not find rbrace :D\n");
@@ -1508,7 +1508,7 @@ int parser_compile(const char *filename, char **out_program, int *out_program_si
 		return 1;
 	}
 
-	printf("scriptbuffer size = %d\n",pp->scriptbuffersize);
+	//printf("scriptbuffer size = %d\n",pp->scriptbuffersize);
 
 	pp->program = (char*)xmalloc(pp->scriptbuffersize * 4); //i don't think the actual program will be this size lol
 	memset(pp->program, OP_NOP, pp->scriptbuffersize);

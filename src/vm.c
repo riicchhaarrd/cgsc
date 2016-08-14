@@ -504,6 +504,7 @@ static int vm_execute(vm_t *vm, int instr) {
 				if (str_index >= vm->istringlistsize)
 					printf("str_index out of bounds!!\n");
 				else {
+					//const char *str = vm->istringlist[str_index].string; //just here for debug purpose
 					se_vv_set_field(vm, vv_obj, str_index, vv);
 					se_vv_free(vm, vv);
 				}
@@ -1291,12 +1292,46 @@ void vm_free(vm_t *vm) {
 	vm->thrunner = NULL;
 
 	int num_vars_left = vector_count(&vm->vars);
-	printf("num vars left =%d\n", num_vars_left);
+	//printf("num vars left =%d\n", num_vars_left);
+
+	//first free the thread local vars so the refs get -1
+
+	for (int i = 0; i < MAX_SCRIPT_THREADS; i++) {
+		vm_thread_t *thr = &vm->threadrunners[i];
+
+		if (!thr->active)
+			continue;
+
+		for (int jj = 0; jj < MAX_LOCAL_VARS; jj++) {
+			varval_t *vv = (varval_t*)thr->stack[thr->registers[REG_BP] + jj]; //pop all local vars?
+			if (vv != NULL) {
+				//printf("removed reference for %s\n", VV_TYPE_STRING(vv));
+				se_vv_remove_reference(vm, vv);
+			}
+		}
+	}
 
 	se_vv_free_force(vm, vm->level);
 
 	//not sure about this, after long time not working on this forgot really what i intended, but i think this should be ok ish
 	//try normally
+
+	while (vector_count(&vm->vars) > 0) {
+		for (int i = 0; i < vector_count(&vm->vars); i++) {
+			varval_t *vv = (varval_t*)vector_get(&vm->vars, i);
+			if (vv->refs > 0) {
+				printf("skipping vv %d (%s), refs = %d, fields = %d\n", i, VV_TYPE_STRING(vv), vv->refs, vector_count(&vv->obj->fields));
+				for (int j = 0; j < vector_count(&vv->obj->fields); j++) {
+					vt_object_field_t *ff = (vt_object_field_t*)vector_get(&vv->obj->fields, j);
+					printf("field %s\n", vm->istringlist[ff->stringindex].string);
+				}
+				continue;
+			}
+			se_vv_free(vm, vv);
+		}
+		//printf("vec count = %d\n", vector_count(&vm->vars));
+	}
+#if 0
 	for (int i = vector_count(&vm->vars) - 1; i > -1; i--) {
 		varval_t *vv = (varval_t*)vector_get(&vm->vars, i);
 		/*if (vv->refs > 0) {
@@ -1304,8 +1339,11 @@ void vm_free(vm_t *vm) {
 			if (loc != -1)
 				vector_delete(&vm->vars, loc);
 		} else */
+		printf("vv (%s), ref = %d\n", VV_TYPE_STRING(vv), vv->refs);
+		if (!VV_USE_REF(vv))
 			se_vv_free_force(vm, vv);
 	}
+#endif
 
 	vector_free(&vm->vars);
 

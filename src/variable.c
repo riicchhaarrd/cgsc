@@ -226,7 +226,7 @@ void se_vv_set_field(vm_t *vm, varval_t *vv, int key, varval_t *value) {
 						stack_pop(vm);
 						vm_registers[REG_BP] = savebp;
 						vm->thrunner->numargs = savenumargs;
-						se_vv_remove_reference(vm, value);
+						//se_vv_remove_reference(vm, value); the caller will free this, and don't need to remove reference?
 						return;
 					}
 				}
