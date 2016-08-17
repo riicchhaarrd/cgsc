@@ -1,21 +1,5 @@
 #include "virtual_machine.h"
-
-static int read_text_file(const char *filename, char **buf, int *filesize) {
-#if 1
-	FILE *fp = fopen(filename, "r");
-	if (fp == NULL)
-		return 1;
-	fseek(fp, 0, SEEK_END);
-	*filesize = ftell(fp);
-	rewind(fp);
-	*buf = (char*)malloc(*filesize + 1);
-	memset(*buf, 0, *filesize);
-	size_t res = fread(*buf, 1, *filesize, fp);
-	fclose(fp);
-	return 0;
-#endif
-	return 0;
-}
+#include "common.h"
 
 int sf_print(vm_t *vm) {
 	for (int i = 0; i < se_argc(vm); i++)
@@ -348,8 +332,32 @@ int sf_string(vm_t *vm) {
 	return 1;
 }
 
+//some windows only functions
+#ifdef _WIN32
+#include <Windows.h>
+#endif
+
+int sf_setpixel(vm_t *vm) {
+	float xyz[3];
+	se_getvector(vm, 0, xyz);
+	float rgb[3];
+	se_getvector(vm, 1, rgb);
+#ifdef _WIN32
+	HWND console_hwnd = GetConsoleWindow();
+	HDC console_hdc = GetDC(console_hwnd);
+
+	SetPixelV(console_hdc, (int)xyz[0], (int)xyz[1], RGB((int)rgb[0], (int)rgb[1], (int)rgb[2]));
+	ReleaseDC(console_hwnd, console_hdc);
+#else
+	printf("this function has no support for linux at the moment.\n");
+#endif
+	return 0;
+}
+
 stockfunction_t std_scriptfunctions[] = {
-	//the define ones lol
+#ifdef _WIN32
+	{"set_pixel", sf_setpixel},
+#endif
 	{ "abs",sf_abs },
 	{ "sinf",sf_m_sinf },
 	{"cosf",sf_m_cosf},

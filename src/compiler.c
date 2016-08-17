@@ -331,11 +331,34 @@ static int parser_accept_token(parser_t *pp, int token) {
 	return 0;
 }
 
+void parser_display_history(parser_t *pp) {
+	int start_history;
+#define HISTORY_LEN 30
+	start_history = pp->curpos - HISTORY_LEN;
+	if (start_history < 0)
+		start_history = 0;
+	int end_history = pp->curpos + HISTORY_LEN;
+
+	if (end_history > pp->scriptbuffersize)
+		end_history = pp->scriptbuffersize;
+
+	for (int i = start_history; i < end_history; i++) {
+		if (i == pp->curpos + 1)
+			putchar('*');
+		putchar(pp->scriptbuffer[i]);
+		if (i == pp->curpos + 1)
+			putchar('*');
+	}
+	putchar('\n');
+}
+
 #define pp_expect(x,y) (parser_expect_token(x,y))
 static int parser_expect_token(parser_t *pp, int token) {
 	if (parser_accept_token(pp, token))
 		return 1;
 	pp->error = 1;
+
+	parser_display_history(pp);
 	printf("error: unexpected symbol! expected %s, got %s\n", lex_token_strings[token], lex_token_strings[pp->token]);
 	return 0;
 }
@@ -1432,25 +1455,8 @@ static int parser_statement(parser_t *pp) {
 		}
 		program_add_opcode(pp, OP_RET);
 	} else {
-		int start_history;
 		unexpected_tkn:
-#define HISTORY_LEN 30
-		start_history=pp->curpos - HISTORY_LEN;
-		if (start_history < 0)
-			start_history = 0;
-		int end_history = pp->curpos + HISTORY_LEN;
-
-		if (end_history > pp->scriptbuffersize)
-			end_history = pp->scriptbuffersize;
-
-		for (int i = start_history; i < end_history; i++) {
-			if (i == pp->curpos + 1)
-				putchar('*');
-			putchar(pp->scriptbuffer[i]);
-			if (i == pp->curpos + 1)
-				putchar('*');
-		}
-		putchar('\n');
+		parser_display_history(pp);
 
 		printf("unexpected token: %s at %d (%c)\n", lex_token_strings[pp->token], pp->curpos, pp->scriptbuffer[pp->curpos]);
 		return 1;
@@ -1630,7 +1636,8 @@ int parser_compile(const char *filename, char **out_program, int *out_program_si
 	xfree(pp->program);
 
 	*out_program = rearranged_program;
-
+	if (pp->error)
+		retcode = 1;
 	parser_cleanup(pp);
 	return retcode;
 }

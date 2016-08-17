@@ -12,7 +12,7 @@ bubblesort(a) {
 }
 
 some_print_stuff() {
-	
+	//printf is really slow unless you change some buffering options
 	limit=3800;
 	fn="test.bin";
 	fp = fopen(fn,"w");
@@ -32,10 +32,9 @@ some_print_stuff() {
 }
 
 write_array_to_file(fn, a) {
-	fp = fopen(fn,"w");
+	fp = fopen(fn,"w"); //fp is a FILE object which automatically does fclose once fp goes out of bounds
 	for(i = 0; i < a.size; i++)
 		fwritevalue(fp, string(a[i]) + " ", false);
-	fclose(fp);
 }
 
 main() {
