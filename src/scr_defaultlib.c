@@ -354,6 +354,21 @@ int sf_setpixel(vm_t *vm) {
 	return 0;
 }
 
+int sf_rename(vm_t *vm) {
+	const char *path = se_getstring(vm, 0);
+	const char *new_path = se_getstring(vm, 1);
+	int ret = rename(path, new_path);
+	se_addint(vm, ret);
+	return 1;
+}
+
+int sf_remove(vm_t *vm) {
+	const char *path = se_getstring(vm, 0);
+	int ret = remove(path);
+	se_addint(vm, ret);
+	return 1;
+}
+
 stockfunction_t std_scriptfunctions[] = {
 #ifdef _WIN32
 	{"set_pixel", sf_setpixel},
@@ -367,7 +382,9 @@ stockfunction_t std_scriptfunctions[] = {
 	{"string",sf_string},
 	{ "read_text_file", sf_read_text_file },
 	{ "write_text_file", sf_write_text_file },
-	
+	{ "rename", sf_rename },
+	{ "remove", sf_remove },
+
 	{ "print", sf_print },
 	{ "println", sf_println },
 	{ "fopen", sf_fopen },
