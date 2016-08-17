@@ -11,9 +11,6 @@ void signal_int(int parm) {
 	vm->is_running = false;
 }
 
-#include <windows.h>
-
-
 #define FPS_DELTA (1000/20)
 int main(int argc, char **argv) {
 	if (argc < 2) {
