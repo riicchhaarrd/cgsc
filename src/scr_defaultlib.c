@@ -369,6 +369,24 @@ int sf_remove(vm_t *vm) {
 	return 1;
 }
 
+int sf_listdir(vm_t *vm) {
+	const char *path = se_getstring(vm, 0);
+	file_info_t *files;
+	size_t numfiles = 0;
+	sys_get_files_from_path(path, &files, &numfiles);
+
+	varval_t *arr = se_createarray(vm);
+
+	for (int i = 0; i < numfiles; i++) {
+		se_addstring(vm, files[i].name);
+		varval_t *av = (varval_t*)stack_pop(vm);
+		se_vv_set_field(vm, arr, i, av);
+	}
+	free(files);
+	stack_push_vv(vm, arr);
+	return 1;
+}
+
 stockfunction_t std_scriptfunctions[] = {
 #ifdef _WIN32
 	{"set_pixel", sf_setpixel},
@@ -384,6 +402,7 @@ stockfunction_t std_scriptfunctions[] = {
 	{ "write_text_file", sf_write_text_file },
 	{ "rename", sf_rename },
 	{ "remove", sf_remove },
+	{ "listdir", sf_listdir },
 
 	{ "print", sf_print },
 	{ "println", sf_println },
