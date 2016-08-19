@@ -13,34 +13,43 @@ int sf_println(vm_t *vm) {
 	return 0;
 }
 
-//not sure if this works properly ;D
-int sf_printf(vm_t *vm) {
-	const char *base_str = se_getstring(vm, 0);
+int sf_sprintf(vm_t *vm) {
+	const char *s = se_getstring(vm, 0);
 	static char string[1024] = { 0 };
 	int stri = 0;
-
-	int parmnum = 1;
-
-	for (int i = 0; i < strlen(base_str); i++) {
+	int parmidx = 0;
+	for (int i = 0; i < strlen(s); i++) {
 		if (stri >= sizeof(string))
 			break;
 
-		if (i > 0 && base_str[i] == '%' && base_str[i-1]!='\\') {
-			const char *part = se_getstring(vm, parmnum++);
-			if (stri + strlen(part) >= sizeof(string))
-				break; //too long m8
-			
-			//strncat(&string[stri], part, sizeof(string) - strlen(string) - 1);
+		if (s[i]=='%' || (s[i] == '{' && isdigit(s[i + 1]) && (i + 2) < sizeof(string) && s[i + 2] == '}')) {
+			int parmnum = s[i + 1] - '0' + 1;
+			if (s[i] == '%')
+				parmnum = ++parmidx;
+			const char *parm = se_getstring(vm, parmnum);
+			//strncat(&string[stri], parm, sizeof(string) - strlen(string) - strlen(parm) + 1);
+			int max_copy = sizeof(string) - strlen(string);
+			if (strlen(parm) < max_copy)
+				max_copy = strlen(parm);
+			strncpy(&string[stri], parm, max_copy);
 
-			strncpy(&string[i], part, strlen(part) + 1);
-			stri += strlen(part);
+			stri += strlen(parm);
+			if(s[i]!='%')
+				i += 2;
 			continue;
 		}
-
-		string[stri++] = base_str[i];
+		string[stri++] = s[i];
 	}
-	string[sizeof(string) - 1] = '\0';
-	printf("%s", string);
+	string[stri] = '\0';
+	se_addstring(vm, string);
+	return 1;
+}
+
+int sf_printf(vm_t *vm) {
+	sf_sprintf(vm);
+	varval_t *vv = stack_pop_vv(vm);
+	printf("%s", se_vv_to_string(vm, vv));
+	se_vv_free(vm, vv);
 	return 0;
 }
 
@@ -327,7 +336,12 @@ int sf_float(vm_t *vm) {
 }
 
 int sf_string(vm_t *vm) {
-	const char *str = se_getstring(vm, 0);
+	const char *str;
+	if (se_getnumparams(vm) < 1)
+		str = "";
+	else
+		str = se_getstring(vm, 0);
+
 	se_addstring(vm, str);
 	return 1;
 }
@@ -420,6 +434,7 @@ stockfunction_t std_scriptfunctions[] = {
 	{ "substr", sf_substr },
 	{ "get_in_string", sf_get_in_string },
 	{ "printf", sf_printf },
+	{ "sprintf", sf_sprintf },
 	{ "getchar", sf_getchar },
 	{"isdefined", sf_isdefined},
 	{ "get_time", sf_get_time },
