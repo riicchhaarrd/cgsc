@@ -14,6 +14,9 @@ typedef char* dynstring;
 #define DYN_INLINE inline
 #define DYN_STATIC static
 
+void dynaddn(dynstring *s, const char *str, size_t n);
+void dynadd(dynstring *s, const char *str);
+
 DYN_INLINE DYN_STATIC dynstring dynalloc(int n)
 {
 	dynstringhdr_t *d = (dynstringhdr_t*)malloc(sizeof(dynstringhdr_t) + n + 1);
@@ -82,9 +85,6 @@ DYN_INLINE DYN_STATIC void dynpush(dynstring *s, int i)
 		hdr->buf[hdr->size] = '\0';
 	}
 }
-
-void dynaddn(dynstring *s, const char *str, size_t n);
-void dynadd(dynstring*,const char *);
 
 DYN_INLINE DYN_STATIC void dynaddf(dynstring *s, const char *fmt, ...)
 {
