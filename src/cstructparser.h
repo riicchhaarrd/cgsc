@@ -7,43 +7,6 @@
 #define SOURCE_STRING(...) #__VA_ARGS__
 #if 1
 static const char *def = SOURCE_STRING(
-	typedef struct {
-	qboolean	allowoverflow;	// if false, do a Com_Error
-	qboolean	overflowed;		// set to true if the buffer size failed (with allowoverflow set)
-	qboolean	oob;			// set to true if the buffer size failed (with allowoverflow set)
-	byte	*data;
-	int		maxsize;
-	int		cursize;
-	int		readcount;
-	int		bit;				// for bitwise reads and writes
-} msg_t;
-
-
-typedef struct tagWNDCLASSA {
-	UINT        style;
-	WNDPROC     lpfnWndProc;
-	int         cbClsExtra;
-	int         cbWndExtra;
-	HINSTANCE   hInstance;
-	HICON       hIcon;
-	HCURSOR     hCursor;
-	HBRUSH      hbrBackground;
-	LPCSTR      lpszMenuName;
-	LPCSTR      lpszClassName;
-} WNDCLASSA, *PWNDCLASSA, NEAR *NPWNDCLASSA, FAR *LPWNDCLASSA;
-typedef struct tagWNDCLASSW {
-	UINT        style;
-	WNDPROC     lpfnWndProc;
-	int         cbClsExtra;
-	int         cbWndExtra;
-	HINSTANCE   hInstance;
-	HICON       hIcon;
-	HCURSOR     hCursor;
-	HBRUSH      hbrBackground;
-	LPCWSTR     lpszMenuName;
-	LPCWSTR     lpszClassName;
-} WNDCLASSW, *PWNDCLASSW, NEAR *NPWNDCLASSW, FAR *LPWNDCLASSW;
-
 typedef struct
 {
 	int size;
@@ -54,13 +17,6 @@ typedef struct
 struct test
 {
 	int a, b, c, d, e, f, g;
-};
-struct  hostent {
-	char    FAR * h_name;           /* official name of host */
-	char    FAR * FAR * h_aliases;  /* alias list */
-	short   h_addrtype;             /* host address type */
-	short   h_length;               /* length of address */
-	char    FAR * FAR * h_addr_list; /* list of addresses */
 };
 );
 #else
