@@ -72,7 +72,22 @@ typedef enum {
 	TK_NOT, //!
 
 	TK_BACKSLASH,
-
+	TK_TYPEDEF,
+	TK_STRUCT,
+	TK_KEYWORD_START,
+	TK_KEYWORD_UNSIGNED = TK_KEYWORD_START,
+	TK_KEYWORD_CHAR,
+	TK_KEYWORD_SHORT,
+	TK_KEYWORD_INT,
+	TK_KEYWORD_LONG,
+	TK_KEYWORD_FLOAT,
+	TK_KEYWORD_DOUBLE,
+	TK_KEYWORD_END= TK_KEYWORD_DOUBLE,
+	TK_SHARP,
+	TK_NEWLINE,
+	TK_TAB,
+	TK_SPACE,
+	TK_CR, //carriage return
 	TK_REF,
 	TK_CHAR, //'a'
 	TK_IDENT, //test
@@ -150,6 +165,13 @@ const static char *lex_token_strings[] = {
 	"TK_DOT",
 	"TK_NOT",
 	"TK_BACKSLASH",
+	"TYPEDEF","STRUCT",
+	0,0,0,0,0,0,0,
+	"TK_SHARP",
+	"TK_NEWLINE",
+	"TK_TAB",
+	"TK_SPACE",
+	"TK_CR", //carriage return
 	"TK_REF",
 	"TK_CHAR",
 	"TK_IDENT",

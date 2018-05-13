@@ -1,5 +1,87 @@
 #include "virtual_machine.h"
 #include "common.h"
+#include "x86.h"
+
+#include <winsock2.h>
+#include <wsipx.h>
+#include <Ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
+
+//#pragma comment(lib, "SDL2.lib")
+
+static bool wsa_init = false;
+
+bool resolve_adr(const char *addr_str, struct sockaddr_in *adr) {
+	char ip_str[256] = { 0 };
+	int ip_stri = 0;
+	const char *port_str = strrchr(addr_str, ':');
+
+	if (port_str != NULL) {
+		for (const char *c = addr_str; *c && c != port_str; c++) {
+			if (ip_stri + 1 > sizeof(ip_str))
+				break;
+			ip_str[ip_stri++] = *c;
+		}
+	}
+	else
+		snprintf(ip_str, sizeof(ip_str), "%s", addr_str);
+
+	struct hostent *host = 0;
+	if ((host = gethostbyname(ip_str)) == NULL) {
+		printf("failed to resolve hostname '%s'\n", addr_str);
+		return false;
+	}
+	adr->sin_family = AF_INET;
+	adr->sin_addr = *(struct in_addr*)host->h_addr;
+
+	if (port_str != NULL) {
+		adr->sin_port = htons(atoi(port_str + 1));
+	}
+	memset(&adr->sin_zero, 0, sizeof(adr->sin_zero));
+	//Common::Printf("Resolved address: %s:%s to %s\n", ip_str, (port_str + 1), adr->getIPString());
+	return true;
+}
+
+static WSADATA wsaData;
+
+static int sf_sendpacket(vm_t *vm) {
+	if (!wsa_init) {
+		if (WSAStartup(MAKEWORD(2, 0), &wsaData) != 0) {
+			printf("wsastartup failed\n");
+			return 0;
+		}
+		wsa_init = true;
+	}
+	SOCKET sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (sock == INVALID_SOCKET) {
+		printf("failed to create socket\n");
+		return 0;
+	}
+	const char *ip = se_getstring(vm, 0);
+	const char *buf = se_getstring(vm, 1);
+	int bufsz = se_getint(vm, 2);
+	struct sockaddr_in adr;
+	if (!resolve_adr(ip, &adr)) {
+		printf("failed to resolve address '%s'\n", ip);
+		return 0;
+	}
+	int ret = sendto(sock, buf, bufsz, 0, (struct sockaddr*)&adr, sizeof(adr));
+	if (ret == SOCKET_ERROR) {
+		printf("sendto failed\n");
+		return 0;
+	}
+	static char recvbuffer[16384];
+	struct sockaddr_in from;
+	memset(&from.sin_zero, 0, sizeof(from.sin_zero));
+	int fromlen = sizeof(from);
+	ret = recvfrom(sock, recvbuffer, sizeof(recvbuffer), 0, (struct sockaddr*)&from, (socklen_t*)&fromlen);
+	if (ret == SOCKET_ERROR) {
+		printf("recvfrom failed\n");
+		return 0;
+	}
+	se_addstring(vm, recvbuffer);
+	return 1;
+}
 
 int sf_print(vm_t *vm) {
 	for (int i = 0; i < se_argc(vm); i++)
@@ -94,6 +176,14 @@ int sf_isdefined(vm_t *vm) {
 int sf_typeof(vm_t *vm) {
 	varval_t *vv = se_argv(vm, 0);
 	se_addstring(vm, VV_TYPE_STRING(vv));
+	return 1;
+}
+
+int sf_sizeof(vm_t *vm) {
+
+	int vv_integer_internal_size(varval_t *vv);
+	varval_t *vv = se_argv(vm, 0);
+	se_addint(vm, vv_integer_internal_size(vv));
 	return 1;
 }
 
@@ -245,7 +335,7 @@ int sf_strpos(vm_t *vm) {
 	return 1;
 }
 
-static void obj_file_deconstructor(FILE *fp) {
+static void obj_file_deconstructor(vm_t *vm, FILE *fp) {
 	if(fp!=NULL)
 		fclose(fp);
 }
@@ -260,7 +350,7 @@ int sf_fopen(vm_t *vm) {
 		return 1;
 	}
 	varval_t *vv = se_createobject(vm, VT_OBJECT_FILE,NULL,NULL,obj_file_deconstructor); //todo add the file deconstructor? :D
-	vv->obj->obj = (void*)fp;
+	vv->as.obj->obj = (void*)fp;
 	stack_push_vv(vm, vv);
 	return 1;
 }
@@ -272,21 +362,21 @@ int sf_fwritevalue(vm_t *vm) {
 	varval_t *val = se_argv(vm, 1);
 	int sz = se_getint(vm, 2);
 
-	FILE *fp = (FILE*)vv->obj->obj;
+	FILE *fp = (FILE*)vv->as.obj->obj;
 	
 	size_t written = 0;
 
 	switch (VV_TYPE(val)) {
 	case VAR_TYPE_INT:
 		if(!sz || sz > 4)
-		written = fwrite(&val->integer, sizeof(val->integer), 1, fp);
+		written = fwrite(&val->as.integer, sizeof(val->as.integer), 1, fp);
 		else
 		{
-			written = fwrite(&val->integer, sz, 1, fp);
+			written = fwrite(&val->as.integer, sz, 1, fp);
 		}
 		break;
 	case VAR_TYPE_FLOAT:
-		written = fwrite(&val->number, sizeof(val->number), 1, fp);
+		written = fwrite(&val->as.number, sizeof(val->as.number), 1, fp);
 		break;
 	case VAR_TYPE_STRING:
 	case VAR_TYPE_INDEXED_STRING: {
@@ -395,10 +485,338 @@ int sf_listdir(vm_t *vm) {
 		se_addstring(vm, files[i].name);
 		varval_t *av = (varval_t*)stack_pop(vm);
 		se_vv_set_field(vm, arr, i, av);
+		se_vv_free(vm, av); //important forgot this because set_field is duplicating it we need to free the one we made
 	}
 	free(files);
 	stack_push_vv(vm, arr);
 	return 1;
+}
+
+typedef enum
+{
+	X86_MOV_OPERAND_ESP = 0xec
+} x86_mov_operand_t;
+
+#if 1
+typedef enum {
+	X86_LEAVE = 0xc9,
+	X86_PUSH_IMM_8 = 0x6a,
+	X86_PUSH_IMM_32 = 0x68,
+	X86_JUMP_RELATIVE = 0xeb,
+	X86_JUMP = 0xe9,
+	X86_INC_REG = 0x40,
+	X86_DEC_REG = 0x48,
+	X86_PUSH_REG = 0x50,
+	X86_POP_REG = 0x58,
+	X86_MOV_EBP = 0x8b,
+	X86_CALL = 0xe8,
+	X86_RET = 0xc3,
+	X86_NOP = 0x90
+} x86_op_ref_t;
+#endif
+
+#define X86_STACK_FRAME_PROLOGUE
+#define X86_STACK_FRAME_EPILOGUE
+
+typedef enum
+{
+	FFI_SUCCESS,
+	FFI_GENERIC_ERROR,
+	FFI_LIBRARY_NOT_FOUND,
+	FFI_FUNCTION_NOT_FOUND,
+} ffi_call_result_t;
+
+#if 0 //old
+int vm_do_jit(vm_t *vm, HMODULE lib, DWORD addr, varval_t **argv, int argc)
+{
+#if 0
+	int(__stdcall *testprintf)(const char *, ...) = (int(__stdcall *)(const char *, ...))addr;
+	testprintf("hello man\n");
+	__asm int 3
+#endif
+#if 0
+	int(__stdcall *testrand)() = (int(__stdcall *)())addr;
+	printf("testrand=%d\n", testrand());
+#endif
+	//__asm int 3
+	int funcsize = 2000;
+
+	SYSTEM_INFO system_info;
+	GetSystemInfo(&system_info);
+	auto const page_size = system_info.dwPageSize;
+
+	// prepare the memory in which the machine code will be put (it's not executable yet):
+	char *jit = VirtualAlloc(0, page_size, MEM_COMMIT, PAGE_READWRITE);
+
+#define JIT_EMIT_DWORD(x) \
+	*(uint32_t*)&jit[j] = x; \
+	j += sizeof(uint32_t)
+#define JIT_EMIT_WORD(x) \
+	*(uint16_t*)&jit[j] = x; \
+	j += sizeof(uint16_t)
+#define JIT_EMIT(x) \
+	jit[j++]=x
+
+	//char *jit = malloc(2000);
+	int j = 0;
+	memset(jit, 0x90, page_size);
+	//printf("jit loc = %02X, pagesize=%d\n", jit, page_size);
+	j += 32;
+
+#if 1
+	jit[j++] = 0x55; //push ebp
+	jit[j++] = 0x8b; //mov ebp, esp
+	jit[j++] = 0xec;
+#endif
+
+	//int numargs = se_argc(vm);
+
+	//81ec sub esp, dword
+	//83ec sub esp, byte
+	//alloc space for local vars
+	JIT_EMIT(0x81);
+	JIT_EMIT(0xec);
+	//JIT_EMIT_DWORD((numargs - 1) * sizeof(uint32_t));
+	JIT_EMIT_DWORD(argc * sizeof(uint32_t));
+
+	//jit[j++] = 0xcc; //int 3
+
+	int cleanupsize = 0;
+
+	for (int i = 0; i < argc; i++)
+	{
+		varval_t *arg = argv[argc - i - 1];// se_argv(vm, numargs - i);
+		if (VV_TYPE(arg) == VAR_TYPE_FLOAT)
+		{
+			//fld dword ptr ds:[x]
+			JIT_EMIT(0xd9);
+			JIT_EMIT(0x05);
+			JIT_EMIT_DWORD(&arg->number);
+
+			//lea esp,dword ptr ss:[esp-4]
+			JIT_EMIT(0x8d);
+			JIT_EMIT(0x64);
+			JIT_EMIT(0x24);
+			JIT_EMIT(0xfc);
+
+			//fstp dword ptr [esp]
+			JIT_EMIT(0xd9);
+			JIT_EMIT(0x1c);
+			JIT_EMIT(0x24);
+			cleanupsize += sizeof(uint32_t);
+		}
+		else {
+			void *imm = 0;
+			if (VV_IS_STRING(arg))
+				imm = se_vv_to_string(vm, arg);
+			else if (VV_IS_NUMBER(arg))
+			{
+				if (VV_TYPE(arg) == VAR_TYPE_INT)
+					imm = arg->integer;
+			}
+
+			JIT_EMIT(0x68); //6a = imm8, 68 = imm32
+			JIT_EMIT_DWORD(*(uint32_t*)&imm);
+		}
+	}
+#if 0
+	int xd = addr;
+	//mov eax
+	jit[j++] = 0xa1;
+	*(uint32_t*)&jit[j] = &addr;
+	j += sizeof(uint32_t);
+
+	jit[j++] = 0x36; //CALL DWORD PTR SS:[EAX]
+	jit[j++] = 0xff;
+	jit[j++] = 0x10;
+#endif
+
+#if 1
+	jit[j++] = 0xff;
+	jit[j++] = 0x15;
+
+	//jit[j++] = 0xe8; //call
+	*(uint32_t*)&jit[j] = (uint32_t)&addr;
+	jit += sizeof(uint32_t);
+#endif
+
+	//cleanup for stdcall
+#if 0 //don't need we're setting esp back to what it was lol
+	jit[j++] = 0x83;
+	jit[j++] = 0xc4;
+	jit[j++] = (numargs - 1) * sizeof(uint32_t) + cleanupsize; //add esp, X
+#endif
+
+															   //jit[j++] = 0x5d; //pop ebp
+	jit[j++] = 0xc9;//leave func exit
+	jit[j++] = 0xc3;//ret
+
+	DWORD old;
+	VirtualProtect(jit, j, PAGE_EXECUTE_READ, &old);
+	int(*call)() = (int(*)())jit;
+	rand();
+	int retval = call();
+
+	//se_addint(vm, retval);
+	//getchar();
+
+	//__asm int 3
+	VirtualFree(jit, 0, MEM_RELEASE);
+	return retval;
+}
+#endif //still works but looks cleaner with functions
+
+int vm_do_jit(vm_t *vm, const char *libname, const char *funcname)
+{
+	int status = FFI_GENERIC_ERROR;
+
+	HMODULE lib = LoadLibraryA(libname);
+	if (!lib)
+		return FFI_LIBRARY_NOT_FOUND;
+	DWORD addr = GetProcAddress(lib, funcname);
+	if (!addr)
+	{
+		return FFI_FUNCTION_NOT_FOUND;
+	}
+	int funcsize = 2000;
+
+	SYSTEM_INFO system_info;
+	GetSystemInfo(&system_info);
+	auto const page_size = system_info.dwPageSize;
+
+	// prepare the memory in which the machine code will be put (it's not executable yet):
+	char *buf = VirtualAlloc(0, page_size, MEM_COMMIT, PAGE_READWRITE);
+	char *jit = buf;
+	jit += 32;
+
+	//char *jit = malloc(2000);
+
+	//printf("jit loc = %02X\n", jit);
+	int j = 0;
+	memset(buf, 0x90, page_size);
+
+#if 1
+	push(&jit, REG_EBP);
+	mov(&jit, REG_EBP, REG_ESP);
+#endif
+	sub_imm(&jit, REG_ESP, 0x12);
+
+	//jit[j++] = 0xcc; //int 3
+	int numargs = se_argc(vm);
+	for (int i = 0; i < numargs; i++)
+	{
+		varval_t *arg = se_argv(vm, numargs - i - 1);
+		if (VV_TYPE(arg) == VAR_TYPE_NULL)
+		{
+			push_imm(&jit, NULL);
+		}
+		else
+		{
+			void *p = arg->as.ptr;
+			if (VV_IS_POINTER(arg))
+			{
+				varval_t *val = (varval_t*)arg->as.ptr;
+				push_imm(&jit, &val->as);
+			} else if (VV_IS_STRING(arg))
+				push_imm(&jit, se_vv_to_string(vm,arg));
+			else
+			{
+				if (VV_TYPE(arg) == VAR_TYPE_OBJECT)
+				{
+					switch (arg->as.obj->type)
+					{
+					case VT_OBJECT_BUFFER:
+						push_imm(&jit, arg->as.obj->obj);
+						break;
+					default: goto _ffi_end;
+					}
+				}
+				else
+					push_imm(&jit, p);
+			}
+		}
+	}
+#if 1
+	//special case of call API 
+	//jit = emit(0x36, jit);
+	//segment override mhm
+	emit(&jit, 0xff);
+	emit(&jit, 0x15);
+	dd(&jit, &addr);
+#if 0
+	//asm int 3
+	emit(&jit, 0xcd);
+	emit(&jit, 0x03);
+#endif
+#endif
+
+	//jit = xor(EAX, EAX, jit);
+#if 1
+	emit(&jit, 0xc9); //leave
+#endif
+	ret(&jit, 0);
+	//JIT_EMIT(X86_LEAVE);
+	//JIT_EMIT(X86_RET);
+
+	j = jit - buf;
+	//printf("j=%02X\n", j);
+	DWORD old;
+	VirtualProtect(buf, page_size, PAGE_EXECUTE_READ, &old);
+	void*(*call)() = (void*(*)())buf;
+
+	//__asm int 3
+
+	void *retval;
+	retval = call();
+	//printf("retval=%d\n", retval);
+	//printf("err = %s\n", strerror(errno));
+	se_addint(vm, retval);
+	status = FFI_SUCCESS;
+
+_ffi_end:
+	VirtualFree(buf, 0, MEM_RELEASE);
+	return status;
+}
+
+int sf_set_ffi_lib(vm_t *vm)
+{
+	const char *name = se_getstring(vm, 0);
+	snprintf(
+		vm->thrunner->ffi_libname,
+		sizeof(vm->thrunner->ffi_libname),
+		"%s",
+		name
+	);
+	return 0;
+}
+
+static int sf_errno(vm_t *vm)
+{
+	se_addint(vm, errno);
+	return 1;
+}
+
+void obj_buffer_deconstructor(vm_t *vm, void *p)
+{
+	if (p)
+		free(p);
+}
+
+int sf_buffer(vm_t *vm)
+{
+	int sz = se_getint(vm, 0);
+
+	varval_t *vv = se_createobject(vm, VT_OBJECT_BUFFER, NULL, NULL, obj_buffer_deconstructor); //todo add the file deconstructor? :D
+	void *p = malloc(sz);
+	vv->as.obj->obj = (void*)p;
+	stack_push_vv(vm, vv);
+	return 1;
+}
+
+int sf_exit(vm_t *vm)
+{
+	vm->is_running = false;
+	return 0;
 }
 
 stockfunction_t std_scriptfunctions[] = {
@@ -409,6 +827,10 @@ stockfunction_t std_scriptfunctions[] = {
 	{ "sinf",sf_m_sinf },
 	{"cosf",sf_m_cosf},
 
+	{ "errno", sf_errno },
+	{"exit", sf_exit},
+	{ "buffer", sf_buffer },
+	{ "set_ffi_lib", sf_set_ffi_lib },
 	{ "int",sf_int },
 	{ "float",sf_float },
 	{"string",sf_string},
@@ -417,6 +839,8 @@ stockfunction_t std_scriptfunctions[] = {
 	{ "rename", sf_rename },
 	{ "remove", sf_remove },
 	{ "listdir", sf_listdir },
+
+	{ "sendpacket", sf_sendpacket },
 
 	{ "print", sf_print },
 	{ "println", sf_println },
@@ -441,6 +865,7 @@ stockfunction_t std_scriptfunctions[] = {
 	{ "randomint", sf_randomint },
 	{"randomfloat", sf_randomfloat},
 	{"spawnstruct", sf_spawnstruct},
-	{"typeof",sf_typeof},
+	{ "typeof",sf_typeof },
+	{"sizeof",sf_sizeof},
 	{NULL,NULL},
 };

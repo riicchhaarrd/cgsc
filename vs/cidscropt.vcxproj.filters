@@ -36,6 +36,9 @@
     <ClCompile Include="..\src\common.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\x86.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\cvector.h">

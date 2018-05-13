@@ -20,6 +20,44 @@ vt_object_t *se_obj_create(vm_t *vm) {
 	return obj;
 }
 
+static VM_INLINE bool varcache_has_available(vm_t *vm)
+{
+	return (vm->varcachesize < MAX_CACHED_VARS);
+}
+
+//bit messy ye oh well
+static VM_INLINE varval_t *vv_alloc_mem(vm_t *vm)
+{
+	if (!varcache_has_available(vm))
+	{
+		varval_t *vv = (varval_t*)vm_mem_alloc(vm, sizeof(varval_t));
+		memset(vv, 0, sizeof(varval_t));
+		return vv;
+	}
+	for (int i = MAX_CACHED_VARS; i--;)
+	{
+		varval_t *vv = &vm->varcache[i];
+		if(vv->flags & VF_CACHED)
+			continue;
+		memset(vv, 0, sizeof(varval_t));
+		vv->flags |= VF_CACHED;
+		++vm->varcachesize;
+		return vv;
+	}
+	return NULL;
+}
+
+static VM_INLINE void vv_free_mem(vm_t *vm, varval_t *vv)
+{
+	if (vv->flags & VF_CACHED)
+	{
+		vv->flags &= ~VF_CACHED;
+		--vm->varcachesize;
+		return;
+	}
+	vm_mem_free(vm, vv);
+}
+
 //TODO add to global GC so it can delete/clear them up?
 #ifdef MEMORY_DEBUG
 varval_t *se_vv_create_r(vm_t *vm, e_var_types_t type, const char *_file, int _line) {
@@ -28,8 +66,9 @@ varval_t *se_vv_create(vm_t *vm, e_var_types_t type) {
 #endif
 	++vars_created;
 
-	varval_t *vv = (varval_t*)vm_mem_alloc(vm, sizeof(varval_t));
-	memset(vv, 0, sizeof(varval_t));
+	varval_t *vv = vv_alloc_mem(vm);
+	memset(&vv->as, 0, sizeof(vv->as));
+
 #ifdef MEMORY_DEBUG
 	snprintf(vv->debugstring, sizeof(vv->debugstring), "%s [%d]", _file, _line);
 #endif
@@ -37,7 +76,7 @@ varval_t *se_vv_create(vm_t *vm, e_var_types_t type) {
 	vv->refs = 0;
 
 	if (VV_USE_REF(vv))
-		vv->obj = se_obj_create(vm);
+		vv->as.obj = se_obj_create(vm);
 	
 	vector_add(&vm->vars, vv);
 
@@ -63,16 +102,16 @@ varval_t *se_vv_copy(vm_t *vm, varval_t *vv) {
 		return vv; //objects can't make copies lol
 
 	varval_t *copy = se_vv_create(vm, VV_TYPE(vv));
-	memcpy(copy, vv, sizeof(varval_t));
+	memcpy(&copy->as, &vv->as, sizeof(vv->as));
+	copy->refs = 0; //already done in create lol
+	copy->flags |= vv->flags & (VF_UNSIGNED | VF_POINTER);
 
 	if (vv->type == VAR_TYPE_STRING) {
-		size_t len = strlen(vv->string) + 1;
+		size_t len = strlen(vv->as.string) + 1;
 		char *str = (char*)vm_mem_alloc(vm, len);
-		snprintf(str, len, "%s", vv->string);
-		copy->string = str;
+		snprintf(str, len, "%s", vv->as.string);
+		copy->as.string = str;
 	}
-
-	copy->refs = 0;
 	return copy;
 }
 
@@ -83,10 +122,10 @@ void se_vv_gc_nullify_references(vm_t *vm, varval_t *dangler) {
 	if (dangler->refs > 0)
 		return;
 
-	for (int i = 0; i < vector_count(&vm->level->obj->fields); i++) {
-		varval_t *level_field = (varval_t*)vector_get(&vm->level->obj->fields, i);
+	for (int i = 0; i < vector_count(&vm->level->as.obj->fields); i++) {
+		varval_t *level_field = (varval_t*)vector_get(&vm->level->as.obj->fields, i);
 		if (level_field == dangler) {
-			vector_set(&vm->level->obj->fields, i, NULL);
+			vector_set(&vm->level->as.obj->fields, i, NULL);
 		}
 	}
 
@@ -99,7 +138,7 @@ void se_vv_gc_nullify_references(vm_t *vm, varval_t *dangler) {
 			vm_stack[vm_registers[REG_BP] + i] = (intptr_t)NULL;
 		}
 		else if (VV_USE_REF(lvar)) {
-			vt_object_t *obj = lvar->obj;
+			vt_object_t *obj = lvar->as.obj;
 			vt_object_field_t *field = NULL;
 
 			for (int i = 0; i < vector_count(&obj->fields); i++) {
@@ -132,11 +171,24 @@ void se_vv_remove_reference(vm_t *vm, varval_t *vv) {
 	se_vv_gc_nullify_references(vm, vv);
 }
 
+void vv_string_set(vm_t *vm, varval_t *vv, const char *s)
+{
+	if (VV_TYPE(vv) != VAR_TYPE_STRING)
+		return;
+	vm_mem_free(vm, vv->as.string);
+
+	size_t len = strlen(s);
+	char *str = (char*)vm_mem_alloc(vm, len + 1);
+	strncpy(str, s, len);
+	str[len] = '\0';
+	vv->as.string = str;
+}
+
 void se_vv_string_free(vm_t *vm, varval_t *vv) {
 	if (vv->type != VAR_TYPE_STRING)
 		return;
-	vm_mem_free(vm, vv->string);
-	vv->string = NULL;
+	vm_mem_free(vm, vv->as.string);
+	vv->as.string = NULL;
 }
 
 varval_t *se_vv_get_field(vm_t *vm, varval_t *vv, int key) {
@@ -145,7 +197,7 @@ varval_t *se_vv_get_field(vm_t *vm, varval_t *vv, int key) {
 		return NULL;
 	}
 
-	vt_object_t *obj = vv->obj;
+	vt_object_t *obj = vv->as.obj;
 	vt_object_field_t *field = NULL;
 	//printf("GET_FIELD{numfields=%d}\n", obj->numfields);
 	if (vv->type == VAR_TYPE_OBJECT) {
@@ -160,7 +212,7 @@ varval_t *se_vv_get_field(vm_t *vm, varval_t *vv, int key) {
 				if (!strcmp(obj->custom[i].name, as_str)) {
 					vt_obj_getter_prototype gttr = (vt_obj_getter_prototype)obj->custom[i].getter;
 					if (gttr) {
-						int result = gttr(vm, vv->obj->obj);
+						int result = gttr(vm, vv->as.obj->obj);
 						varval_t *ret = NULL;
 						if (result)
 							ret = (varval_t*)stack_pop(vm);
@@ -203,7 +255,7 @@ void se_vv_set_field(vm_t *vm, varval_t *vv, int key, varval_t *value) {
 		printf("tried to set key on non-object/array\n");
 		return;
 	}
-	vt_object_t *obj = vv->obj;
+	vt_object_t *obj = vv->as.obj;
 	vt_object_field_t *field = NULL;
 	if (vv->type == VAR_TYPE_OBJECT) {
 
@@ -222,7 +274,7 @@ void se_vv_set_field(vm_t *vm, varval_t *vv, int key, varval_t *value) {
 						intptr_t savebp = vm_registers[REG_BP];
 						vm_registers[REG_BP] = vm_registers[REG_SP] + 1;
 						stack_push_vv(vm, value);
-						sttr(vm, vv->obj->obj);
+						sttr(vm, vv->as.obj->obj);
 						stack_pop(vm);
 						vm_registers[REG_BP] = savebp;
 						vm->thrunner->numargs = savenumargs;
@@ -307,7 +359,7 @@ static void se_vv_object_free_fields(vm_t *vm, varval_t *vv) {
 	vm_mem_free(vm, obj->fields);
 	obj->fields = NULL;
 	*/
-	vt_object_t *obj = vv->obj;
+	vt_object_t *obj = vv->as.obj;
 
 	//printf("FREEING OBJECT %02X, numfields=%d (%s)\n", obj, vector_count(&obj->fields), VV_TYPE_STRING(vv));
 
@@ -330,10 +382,10 @@ void se_vv_object_free(vm_t *vm, varval_t *vv) {
 		return;
 	//printf("FREE OBJ [%02X] numfields=%d\n", vv->obj, vector_count(&vv->obj->fields));
 	se_vv_object_free_fields(vm, vv);
-	if (vv->obj->deconstructor != NULL)
-		vv->obj->deconstructor(vv->obj->obj);
-	vm_mem_free(vm, vv->obj);
-	vv->obj = NULL;
+	if (vv->as.obj->deconstructor != NULL)
+		vv->as.obj->deconstructor(vm, vv->as.obj->obj);
+	vm_mem_free(vm, vv->as.obj);
+	vv->as.obj = NULL;
 }
 
 void se_vv_free_force(vm_t *vm, varval_t *vv) {
@@ -343,15 +395,15 @@ void se_vv_free_force(vm_t *vm, varval_t *vv) {
 	se_vv_free(vm, vv);
 }
 
-void se_vv_free_r(vm_t *vm, varval_t *vv, const char *_file, int _line) {
+int se_vv_free_r(vm_t *vm, varval_t *vv, const char *_file, int _line) {
 	if (!vv) {
 		//printf("no need to free null!\n");
-		return;
+		return 1;
 	}
 
 	if (vv->refs > 0) {
 		//printf("VV->REFS > 0 (%d, TYPE=%s)\n", vv->refs, e_var_types_strings[vv->type]);
-		return;
+		return 1;
 	}
 
 	--vars_created;
@@ -391,7 +443,9 @@ void se_vv_free_r(vm_t *vm, varval_t *vv, const char *_file, int _line) {
 #endif
 
 	//add here the strings/objects/array other type of bs to clean aswell
-	vm_mem_free(vm, vv);
+	//vm_mem_free(vm, vv);
+	vv_free_mem(vm, vv);
+	return 0;
 }
 
 vt_istring_t *se_istring_create(vm_t *vm, const char *str) {
@@ -426,7 +480,7 @@ vt_istring_t *se_istring_find(vm_t *vm, const char *str) {
 const char *se_index_to_string(vm_t *vm, int i) {
 	if (i >= vm->istringlistsize) {
 		printf("index to string too high %d, list size = %d\n", i, vm->istringlistsize);
-		return "[null]";
+		return NULL;
 	}
 	return vm->istringlist[i].string;
 }

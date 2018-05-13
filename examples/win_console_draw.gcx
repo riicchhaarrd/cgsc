@@ -1,3 +1,4 @@
+/* NOT WORKING AT THE MOMENT I PROBABLY REMOVED SETPIXEL BUILTIN FUNCTION OR SOMETHING */
 //todo replace the setpixel with a faster alternative draw to bitmap then BitBlt to console hdc
 
 vec2(x,y) {

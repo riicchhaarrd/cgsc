@@ -4,7 +4,13 @@
 #include "variable.h"
 #include "include/cidscropt.h"
 #include "cvector.h"
+#include "dynarray.h"
 
+#ifdef _WIN32
+#define VM_INLINE __forceinline
+#else
+#define VM_INLINE inline
+#endif
 #define VM_STACK_SIZE (65000)
 
 typedef enum {
@@ -12,6 +18,11 @@ typedef enum {
 	E_VM_RET_WAIT,
 	E_VM_RET_ERROR,
 } e_vm_return_codes;
+
+typedef enum {
+	E_VM_ERR_NONE,
+	E_VM_ERR_DIVIDE_BY_ZERO,
+} e_vm_error_codes;
 
 typedef enum {
 	REG_A,
@@ -37,11 +48,13 @@ typedef struct {
 } vm_function_info_t;
 
 struct vm_thread_s {
+	char ffi_libname[256];
 	size_t stacksize;
 	intptr_t *stack, registers[e_vm_reg_len];
 	int numargs;
 	int wait;
 	bool active;
+	//char string[512]; //used for getting string value types n stuff
 };
 
 struct vm_s {
@@ -74,9 +87,12 @@ struct vm_s {
 	vm_thread_t *threadrunners;
 	int numthreadrunners;
 	vm_thread_t *thrunner;
-	
-	bool is_running;
+#define MAX_CACHED_VARS (512)
+	varval_t varcache[MAX_CACHED_VARS];
+	unsigned int varcachesize;
 
+	bool is_running;
+	bool close_requested;
 	vector functioninfo;
 
 	int tmpstack[512];
@@ -86,6 +102,10 @@ struct vm_s {
 
 	stockfunction_t *stockfunctionsets[16];
 	int numstockfunctionsets;
+
+	void *m_userpointer;
+
+	dynarray structs;
 };
 
 #define vm_stack vm->thrunner->stack
@@ -95,7 +115,7 @@ struct vm_s {
 
 #include <stdio.h> //getchar
 
-static void stack_push(vm_t *vm, intptr_t x) {
+static VM_INLINE void stack_push(vm_t *vm, intptr_t x) {
 	if (vm->thrunner == NULL)
 		vm->stack[++vm->registers[REG_SP]] = x;
 	else {
@@ -108,11 +128,11 @@ static void stack_push(vm_t *vm, intptr_t x) {
 	}
 }
 
-static void stack_push_vv(vm_t *vm, varval_t *x) {
+static VM_INLINE void stack_push_vv(vm_t *vm, varval_t *x) {
 	stack_push(vm, (intptr_t)x);
 }
 
-static intptr_t stack_get(vm_t *vm, int at) {
+static VM_INLINE intptr_t stack_get(vm_t *vm, int at) {
 	if (vm->thrunner == NULL)
 		return vm->stack[vm->registers[REG_SP] - at];
 	return vm->thrunner->stack[vm->thrunner->registers[REG_SP] - at];
@@ -120,13 +140,13 @@ static intptr_t stack_get(vm_t *vm, int at) {
 
 #define stack_current(x) (stack_get(vm,0))
 
-static intptr_t stack_pop(vm_t *vm) {
+static VM_INLINE intptr_t stack_pop(vm_t *vm) {
 	if (vm->thrunner == NULL)
 		return vm->stack[vm->registers[REG_SP]--];
 	return vm->thrunner->stack[vm->thrunner->registers[REG_SP]--];
 }
 
-static varval_t *stack_pop_vv(vm_t *vm) {
+static VM_INLINE varval_t *stack_pop_vv(vm_t *vm) {
 	return (varval_t*)stack_pop(vm);
 }
 

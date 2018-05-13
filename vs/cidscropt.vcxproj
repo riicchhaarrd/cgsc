@@ -198,6 +198,7 @@
     <ClCompile Include="..\src\standalone.c" />
     <ClCompile Include="..\src\variable.c" />
     <ClCompile Include="..\src\vm.c" />
+    <ClCompile Include="..\src\x86.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\common.h" />

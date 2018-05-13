@@ -8,11 +8,17 @@ extern "C" {
 
 //#define MEMORY_DEBUG
 
+typedef struct
+{
+	uint32_t code_offset;
+} bprogramhdr_t;
+
 typedef struct vm_s vm_t;
 typedef struct varval_s varval_t;
 typedef struct vm_thread_s vm_thread_t;
 
 int parser_compile(const char *filename, char **out_program, int *program_size);
+int parser_compile_string(const char *str, char **out_program, int *program_size);
 
 int vm_get_num_active_threadrunners(vm_t *vm);
 
@@ -21,8 +27,13 @@ int vm_exec_thread_pointer(vm_t *vm, int fp, int numargs);
 int vm_exec_ent_thread_pointer(vm_t *vm, varval_t *new_self, int fp, int numargs);
 int vm_exec_thread(vm_t *vm, const char *func_name, int numargs);
 
+int vm_exec_ent_thread(vm_t *vm, varval_t *new_self, const char *func_name, int numargs);
+void *vm_get_user_pointer(vm_t*);
+void vm_set_user_pointer(vm_t*, void*);
+
 void vm_free(vm_t *vm);
 vm_t *vm_create(const char *program, int programsize);
+void vm_error(vm_t*, int, const char *, ...);
 
 typedef struct {
 	const char *name;
@@ -42,9 +53,13 @@ int se_getistring(vm_t*, int);
 void se_set_object_field(vm_t *vm, const char *key);
 
 typedef enum {
-	VAR_TYPE_INT,
-	VAR_TYPE_FLOAT,
 	VAR_TYPE_CHAR,
+	VAR_TYPE_SHORT,
+	VAR_TYPE_INT,
+	VAR_TYPE_LONG,
+	VAR_TYPE_FLOAT,
+	VAR_TYPE_DOUBLE,
+
 	VAR_TYPE_STRING,
 	VAR_TYPE_INDEXED_STRING,
 	VAR_TYPE_VECTOR,
@@ -77,11 +92,20 @@ typedef struct {
 typedef enum {
 	VT_OBJECT_GENERIC,
 	VT_OBJECT_FILE,
+	VT_OBJECT_BUFFER,
 	VT_OBJECT_LEVEL,
 	VT_OBJECT_SELF,
 	VT_OBJECT_CUSTOM
 } e_vt_object_types;
 //rest is up to the application i think
+
+typedef struct {
+	int type;
+	size_t size;
+	char data[];
+} vt_buffer_t;
+
+#define DYN_TYPE_HDR(type, s) (type *)( ( s ) - sizeof(type) )
 
 typedef int(*vt_obj_getter_prototype)(vm_t*, void*);
 typedef void(*vt_obj_setter_prototype)(vm_t*, void*);
@@ -100,10 +124,12 @@ typedef struct {
 	vector fields;
 	vt_obj_field_custom_t *custom;
 	void *constructor;
-	void(*deconstructor)(void*);
+	void(*deconstructor)(vm_t*, void*);
 	void *obj; //ptr to the class/struct object
 	int type;
 } vt_object_t;
+
+typedef double vm_scalar_t;
 
 struct varval_s {
 	e_var_types_t type;
@@ -112,16 +138,23 @@ struct varval_s {
 	char debugstring[256];
 #endif
 	union {
+		double dbl;
+		float flt;
+		float number;
+
 		char character;
 		int integer;
-		intptr_t ptr;
+		short shortint;
+		long long longint;
+
+		//intptr_t ptr;
 		char *string;
+		void *ptr;
 		vt_object_t *obj;
 		int index; //more generic
 		int stringindex;
-		float number;
-		float vec[3]; //largest imo
-	};
+		vm_scalar_t vec[3]; //largest imo
+	} as;
 };
 
 const char *se_vv_to_string(vm_t *vm, varval_t *vv);
@@ -137,7 +170,7 @@ varval_t *se_vv_copy(vm_t*, varval_t *vv);
 void se_vv_remove_reference(vm_t *vm, varval_t *vv);
 void se_vv_set_field(vm_t *vm, varval_t *vv, int key, varval_t *value);
 #define se_vv_free(a,b) (se_vv_free_r(a,b,__FILE__,__LINE__))
-void se_vv_free_r(vm_t*, varval_t *vv,const char *,int);
+int se_vv_free_r(vm_t*, varval_t *vv,const char *,int);
 void se_vv_free_force(vm_t *vm, varval_t *vv);
 varval_t *se_vv_get_field(vm_t *, varval_t *vv, int key);
 
@@ -148,6 +181,8 @@ void se_addnull(vm_t*);
 void se_addistring(vm_t*, int);
 void se_addvector(vm_t*, const float*);
 void se_addvectorf(vm_t *vm, float x, float y, float z);
+varval_t *se_createstring(vm_t *vm, const char *s);
+void vv_string_set(vm_t *vm, varval_t *vv, const char *s);
 void se_addstring(vm_t*, const char*);
 void se_addint(vm_t*, int);
 #define se_addbool(a,b) se_addint(a,((b==true) ? 1 : 0))

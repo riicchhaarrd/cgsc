@@ -1,6 +1,10 @@
+
+#include "cstructparser.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <stdarg.h>
 #include "xalloc.h"
 
 #include "tokens.h"
@@ -30,6 +34,8 @@
 #define next (pp->curpos >= pp->scriptbuffersize ? 0 : pp->scriptbuffer[pp->curpos++])
 #define next_chk(x) ( ( (pp->scriptbuffer[pp->curpos] == x) ? pp->scriptbuffer[pp->curpos++] : pp->scriptbuffer[pp->curpos] ) == x)
 
+static const char *c_keywords_strings[] = { "unsigned", "char", "short", "int", "long", "float", "double", NULL };
+
 static int parser_append_to_parse_string(parser_t *pp, int c) {
 #if 0
 	if (!c)
@@ -41,6 +47,23 @@ static int parser_append_to_parse_string(parser_t *pp, int c) {
 	}
 	pp->string[pp->stringindex++] = c;
 	return 1;
+}
+
+bool isHexChar(int ch, int *value) {
+	*value = 0;
+	if (ch >= 'a' && ch <= 'f') {
+		*value = 15 - ('f' - ch);
+		return true;
+	}
+	if (ch >= 'A' && ch <= 'F') {
+		*value = 15 - ('F' - ch);
+		return true;
+	}
+	if (ch >= '0' && ch <= '9') {
+		*value = ch - '0';
+		return true;
+	}
+	return false;
 }
 
 static int parser_read_string(parser_t *pp) {
@@ -61,6 +84,16 @@ static int parser_read_string(parser_t *pp) {
 
 		if (ch == '\\') { //maybe fix this with actual stuff?
 			switch (ch = next) {
+			case 'x': {
+				int nibble1, nibble2;
+				int first = next;
+				if (!isHexChar(first, &nibble1))
+					goto break_out;
+				int second = next;
+				if (!isHexChar(second, &nibble2)) goto break_out;
+				int value = ((nibble1 << 4) | nibble2) & 255;
+				ch = value;
+			} break;
 			case 'n':
 				ch = '\n';
 				break;
@@ -83,22 +116,48 @@ static int parser_read_string(parser_t *pp) {
 		if (!parser_append_to_parse_string(pp, ch))
 			break;
 	}
+	break_out:
 	return is_char ? TK_CHAR : TK_STRING;
 }
 
+static bool is_ident_char(int c)
+{
+	return (isalnum(c) || c == '$' || c == '_');
+}
+
+static bool pp_is_token_enabled(parser_t *pp, int t) {
+	if (!pp->enabledtokens)
+		return true;
+	for (int i = 0; pp->enabledtokens[i] != TK_EOF; ++i) {
+		if (pp->enabledtokens[i] == t)
+			return true;
+	}
+	return false;
+}
 
 static int parser_read_identifier(parser_t *pp) {
 	memset(pp->string, 0, sizeof(pp->string));
 	pp->stringindex = 0;
 	--pp->curpos;
 	int ch;
-	while (isalpha((ch = next)) || isdigit(ch) || ch == '_') {
-		if (!parser_append_to_parse_string(pp, tolower(ch)))
+	while (is_ident_char((ch = next))) {
+		if (!parser_append_to_parse_string(pp, ch))
 			break;
 	}
 	--pp->curpos;
+
+	for (int i = 0; c_keywords_strings[i]; ++i)
+	{
+		if (!strcmp(c_keywords_strings[i], pp->string))
+			return TK_KEYWORD_START + i;
+	}
+
 	if (!strcmp(pp->string, "if"))
 		return TK_IF;
+	else if (!strcmp(pp->string, "typedef"))
+		return TK_TYPEDEF;
+	else if (!strcmp(pp->string, "struct"))
+		return TK_STRUCT;
 	else if (!strcmp(pp->string, "push"))
 		return TK_R_PUSH;
 	else if (!strcmp(pp->string, "pop"))
@@ -199,9 +258,13 @@ scan:
 	switch ((ch = next)) {
 	case '\t':
 	case ' ':
+		if (pp->flags & PARSER_FLAG_TOKENIZE_WHITESPACE)
+			return ch == ' ' ? TK_SPACE : TK_TAB;
 		goto scan;
-	case '\r':
 	case '\n':
+		if (pp->flags & PARSER_FLAG_TOKENIZE_NEWLINE)
+			return TK_NEWLINE;
+	case '\r':
 		++pp->lineno;
 		goto scan;
 		break;
@@ -241,7 +304,7 @@ scan:
 		else if (next_chk('-'))
 			return TK_MINUS_MINUS;
 		else if (next_chk('>'))
-			return TK_MEMBER_SEPERATOR;
+			return TK_DOT;// return TK_MEMBER_SEPERATOR;
 		return TK_MINUS;
 	case '&':
 		if (next_chk('&'))
@@ -267,12 +330,12 @@ scan:
 		if (next_chk('='))
 			return TK_NOTEQUAL;
 		return TK_NOT;
-	
+#if 0
 	case '$':
 		if (isdigit(pp->scriptbuffer[pp->curpos + 1]))
 			goto get_num;
 		return TK_DOLLAR;
-
+#endif
 	case '/':
 		if (next_chk('/')) {
 			while (ch && ch != '\n') {
@@ -281,9 +344,21 @@ scan:
 			goto scan;
 
 		}
+		else if (next_chk('*')) {
+			int prev = 0;
+			while (ch) {
+				if (ch == '/' && prev == '*')
+					break;
+				prev = ch;
+				ch = next;
+			}
+			goto scan;
+		}
 		else if (next_chk('='))
 			return TK_DIVIDE_ASSIGN;
 		return TK_DIVIDE;
+	case '#':
+		return TK_SHARP;
 	case '*':
 		if (next_chk('='))
 			return TK_MULTIPLY_ASSIGN;
@@ -296,13 +371,19 @@ scan:
 		get_num:
 			return parser_read_number(pp);
 		}
-		else if (isalpha(ch) || ch == '_') {
-			int ident = parser_read_identifier(pp);
-			if (ident == TK_R_TRUE || ident == TK_R_FALSE) {
-				pp->integer = (ident == TK_R_TRUE) ? 1 : 0;
-				return TK_INT;
+		else
+		{
+			if (is_ident_char(ch))
+			{
+				int ident = parser_read_identifier(pp);
+				if (!pp_is_token_enabled(pp, ident))
+					return TK_IDENT;
+				if (ident == TK_R_TRUE || ident == TK_R_FALSE) {
+					pp->integer = (ident == TK_R_TRUE) ? 1 : 0;
+					return TK_INT;
+				}
+				return ident;
 			}
-			return ident;
 		}
 		return TK_ILLEGAL;
 
@@ -314,6 +395,10 @@ scan:
 
 #define pp_accept(x,y) (parser_accept_token(x,y))
 #define pp_undo() (parser_undo())
+#define pp_save(x) int sav=x->curpos
+#define pp_restore(x) x->curpos=sav
+#define pp_goto(x,y) x->curpos=y;
+#define pp_tell(x) x->curpos
 
 static void parser_undo(parser_t *pp) {
 	pp->curpos = pp->prevpos;
@@ -329,6 +414,21 @@ static int parser_accept_token(parser_t *pp, int token) {
 	}
 	pp->curpos = pp->prevpos;
 	return 0;
+}
+
+int parser_get_location(parser_t *pp) {
+	char *end = &pp->scriptbuffer[pp->curpos];
+	char *p = pp->scriptbuffer;
+	int lineno = 0;
+	while (*p && p < end) {
+		if (*p == '\n' || *p == '\r') {
+			p += (p[0] + p[1] == '\n' + '\r') ? 2 : 1;
+			++lineno;
+		}
+		else
+			++p;
+	}
+	return lineno;
 }
 
 void parser_display_history(parser_t *pp) {
@@ -357,9 +457,9 @@ static int parser_expect_token(parser_t *pp, int token) {
 	if (parser_accept_token(pp, token))
 		return 1;
 	pp->error = 1;
-
+	int lineno = parser_get_location(pp);
 	parser_display_history(pp);
-	printf("error: unexpected symbol! expected %s, got %s\n", lex_token_strings[token], lex_token_strings[pp->token]);
+	printf("error: unexpected symbol! expected %s, got %s at line %d\n", lex_token_strings[token], lex_token_strings[pp->token], lineno);
 	return 0;
 }
 
@@ -450,7 +550,8 @@ static void parser_free_indexed_string(parser_t *pp, int index) {
 static void parser_init(parser_t *pp) {
 
 	memset(pp, 0, sizeof(parser_t));
-	
+	array_init(&pp->structs, cstruct_t);
+
 	pp->execute = true;
 	pp->curpos = 0;
 	pp->scriptbuffer = NULL;
@@ -470,12 +571,12 @@ static void parser_init(parser_t *pp) {
 }
 
 static void parser_cleanup(parser_t *pp) {
-	xfree(pp->scriptbuffer);
+	//xfree(pp->scriptbuffer);
 	pp->scriptbuffer = NULL;
 
 	for (int i = 0; i < MAX_ISTRINGS; i++)
 		parser_free_indexed_string(pp, i);
-
+	array_free(&pp->structs);
 	xfree(pp);
 }
 
@@ -487,7 +588,7 @@ static void program_add_opcode(parser_t *pp, uint8_t opcode) {
 
 	pp->program[pp->program_counter++] = opcode;
 	const char *opcode_str = opcode < OP_END_OF_LIST ? e_opcodes_strings[opcode] : "[not opcode]";
-	//printf("program_add_opcode(%s) => %d (0x%x)\n", opcode_str, opcode, opcode);
+	printf("program_add_opcode(%s) => %d (0x%x)\n", opcode_str, opcode, opcode);
 }
 
 static void program_add_int(parser_t *pp, uint32_t i) {
@@ -536,7 +637,7 @@ static void program_add_short(parser_t *pp, int i) {
 }
 
 static var_t *parser_create_local_variable(parser_t *pp);
-static int parser_variable(parser_t *pp, const char *id, bool load, bool create_if_not_exist, var_t **out) {
+static int parser_variable(parser_t *pp, const char *id, bool load, bool create_if_not_exist, var_t **out, int op) {
 	if(out)
 	*out = NULL;
 
@@ -562,7 +663,7 @@ static int parser_variable(parser_t *pp, const char *id, bool load, bool create_
 		}
 		else {
 			if (load) {
-				program_add_opcode(pp, OP_LOAD);
+				program_add_opcode(pp, op);
 				program_add_short(pp, v->index);
 			}
 		}
@@ -571,13 +672,40 @@ static int parser_variable(parser_t *pp, const char *id, bool load, bool create_
 	return 0;
 }
 
+inline unsigned long parser_hash_string(const char *str)
+{
+	unsigned long hash = 5381;
+	int c;
+
+	while (c = *str++)
+		hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+
+	return hash;
+}
+
+cstruct_t *parser_get_struct(parser_t *pp, const char *name, int *index)
+{
+	for (int i = pp->structs.size; i--;)
+	{
+		array_get(&pp->structs, cstruct_t, cs, i);
+		if (!strcmp(cs->name, name))
+		{
+			if(index!=NULL)
+				*index = i;
+			return cs;
+		}
+	}
+	return NULL;
+}
+
 /* TODO rewrite this stuff into e.g factor push stuff and then e.g TK_ASSIGN push the STORE_ stuff with states or so */
 
 static int parser_factor(parser_t *pp) {
 	if (pp_accept(pp, TK_NOT)) {
 		++pp->not;
 		return 0;
-	} else if(pp_accept(pp,TK_COLON)) {
+	}
+	else if (pp_accept(pp, TK_COLON)) {
 		if (!pp_expect(pp, TK_COLON)) return 1;
 		if (!pp_expect(pp, TK_IDENT)) return 1;
 
@@ -597,6 +725,25 @@ static int parser_factor(parser_t *pp) {
 			printf("function '%s' was not found\n", pp->string);
 			return 1;
 		}
+	} else if(pp_accept(pp, TK_AND)) {
+		//get address of
+		if (!pp_accept(pp, TK_IDENT))
+			return 1;
+		if (parser_variable(pp, pp->string, true, false, NULL, OP_LOAD_REF))
+			return 1;
+		program_add_opcode(pp, OP_ADDRESS);
+	}
+	else if (pp_accept(pp, TK_MULTIPLY)) {
+		//dereference
+
+		if (!pp_accept(pp, TK_IDENT))
+			return 1;
+		if (parser_variable(pp, pp->string, true, false, NULL, OP_LOAD_REF))
+			return 1;
+		program_add_opcode(pp, OP_DEREFERENCE);
+	} else if(pp_accept(pp,TK_CHAR)) {
+		program_add_opcode(pp, OP_PUSH);
+		program_add_int(pp,*(int32_t*)&pp->string[0]);
 	} else if (pp_accept(pp, TK_INT)) {
 		program_add_opcode(pp, OP_PUSH);
 		program_add_int(pp, pp->integer);
@@ -619,12 +766,22 @@ static int parser_factor(parser_t *pp) {
 	} else if (pp_accept(pp, TK_R_NEW)) {
 		if (!pp_expect(pp, TK_IDENT))
 			return 1;
+#if 0
 		if (!stricmp(pp->string, "object") || !stricmp(pp->string, "obj")) {
 			program_add_opcode(pp, OP_PUSH_OBJECT);
 		}
 		else if (!stricmp(pp->string, "array")) {
 			program_add_opcode(pp, OP_PUSH_ARRAY);
 			program_add_short(pp, 0);
+		}
+#endif
+		int s_index;
+		cstruct_t *cs = parser_get_struct(pp, pp->string, &s_index);
+		if (cs != NULL)
+		{
+			program_add_opcode(pp, OP_PUSH_BUFFER);
+			program_add_short(pp, s_index);
+			program_add_short(pp, cs->size);
 		}
 		else
 			return 1;
@@ -695,7 +852,7 @@ static int parser_factor(parser_t *pp) {
 				}
 		} else {
 
-			if (parser_variable(pp, pp->string, true, false, NULL))
+			if (parser_variable(pp, pp->string, true, false, NULL, OP_LOAD))
 				return 1;
 
 			while (1) {
@@ -728,28 +885,68 @@ static int parser_factor(parser_t *pp) {
 		}
 	} else if(pp_accept(pp,TK_LPAREN)) {
 		int lparen_savepos = pp->curpos;
+		bool is_cast = false;
 
-		if (parser_expression(pp))
-			return 1;
-
-		if (pp_accept(pp, TK_COMMA)) {
-			int i = 0; 
-			do {
+		for (int i = TK_KEYWORD_CHAR; i <= TK_KEYWORD_DOUBLE; ++i)
+		{
+			if (pp_accept(pp, i))
+			{
+				//doesnt matter these are reserved keywords anyways
+				pp_expect(pp, TK_RPAREN);
 				if (parser_expression(pp))
 					return 1;
-				++i;
-			} while (pp_accept(pp, TK_COMMA));
-			if (i != 2) {
-				printf("invalid vector!\n");
-				return 1;
+				program_add_opcode(pp, OP_CAST);
+				program_add_short(pp, i - TK_KEYWORD_CHAR);
+				is_cast = true;
+				break;
 			}
-			program_add_opcode(pp, OP_PUSH_VECTOR);
 		}
 
+		if (!is_cast) {
+			int savepos = pp->curpos;
+			if (pp_accept(pp, TK_IDENT)) {
+				for (int i = 0; e_var_types_strings[i]; ++i) {
+					if (!stricmp(pp->string, e_var_types_strings[i])) {
+						pp_expect(pp, TK_RPAREN);
+						if (parser_expression(pp))
+							return 1;
+						program_add_opcode(pp, OP_CAST);
+						program_add_short(pp, i);
+						is_cast = true;
+						break;
+					}
+				}
+				if (!is_cast)
+					pp->curpos = savepos;
+			}
+		}
 
-		pp_expect(pp, TK_RPAREN);
+		if(!is_cast)
+		{
+
+			if (parser_expression(pp))
+				return 1;
+
+			if (pp_accept(pp, TK_COMMA)) {
+				int i = 0;
+				do {
+					if (parser_expression(pp))
+						return 1;
+					++i;
+				} while (pp_accept(pp, TK_COMMA));
+				if (i != 2) {
+					printf("invalid vector!\n");
+					return 1;
+				}
+				program_add_opcode(pp, OP_PUSH_VECTOR);
+			}
+
+
+			pp_expect(pp, TK_RPAREN);
+		}
 	} else {
-		printf("factor: syntax error got %s\n", lex_token_strings[pp->token]);
+		int lineno = parser_get_location(pp);
+		printf("factor: syntax error got %s at %d\n", lex_token_strings[pp->token], lineno);
 		return 1;
 	}
 
@@ -979,9 +1176,31 @@ static int parser_encapsulated_block(parser_t *pp) {
 
 static int parser_statement(parser_t *pp) {
 	bool is_thread_call = false;
+	int before = pp->curpos;
 
+	dynarray structs;
+
+	int np;
 	if (pp_accept(pp, TK_EOF)) {
 		return 1;
+	} else if (pp_accept(pp, TK_TYPEDEF)) {
+		goto struct_define;
+	} else if(pp_accept(pp,TK_STRUCT)) {
+	struct_define:
+		array_init(&structs, cstruct_t);
+		np = cstructparser(&pp->scriptbuffer[before], &structs, false);
+		if(!np)
+		{
+			return 1;
+		}
+		pp->curpos = np + before;
+		for (int i = 0; i < structs.size; i++)
+		{
+			array_get(&structs, cstruct_t, cs, i);
+			//printf("cs size = %d %s\n", cs->size, cs->name);
+			array_push(&pp->structs, cs);
+		}
+		array_free(&structs);
 	} else if(pp_accept(pp,TK_SEMICOLON)) {
 		return 0;
 	} else if (pp_accept(pp, TK_LBRACE)) {
@@ -1210,7 +1429,7 @@ static int parser_statement(parser_t *pp) {
 			is_obj = true;
 			var_t *v;
 
-			if (parser_variable(pp, id, true, true, &v))
+			if (parser_variable(pp, id, true, true, &v, OP_LOAD))
 				return 1;
 			if(v)
 			index = v->index;
@@ -1279,7 +1498,7 @@ static int parser_statement(parser_t *pp) {
 			/* add the opcodes for the special assign types */
 			if (tk != TK_ASSIGN) { //should probably fix someday that also for arr/objs +=/-= etc works
 
-				if (parser_variable(pp, id, true, false, NULL))
+				if (parser_variable(pp, id, true, false, NULL, OP_LOAD))
 					return 1;
 
 				if (tk == TK_PLUS_ASSIGN)
@@ -1457,8 +1676,9 @@ static int parser_statement(parser_t *pp) {
 	} else {
 		unexpected_tkn:
 		parser_display_history(pp);
+		int lineno = parser_get_location(pp);
 
-		printf("unexpected token: %s at %d (%c)\n", lex_token_strings[pp->token], pp->curpos, pp->scriptbuffer[pp->curpos]);
+		printf("unexpected token: %s at %d (%c) at line %d\n", lex_token_strings[pp->token], pp->curpos, pp->scriptbuffer[pp->curpos], lineno);
 		return 1;
 	}
 	return 0;
@@ -1483,7 +1703,7 @@ static int parser_block(parser_t *pp, int start, int end) {
 	return 0;
 }
 
-static int read_text_file(const char *filename, char **buf, int *filesize) {
+int read_text_file(const char *filename, char **buf, int *filesize) {
 #if 1
 	FILE *fp = fopen(filename, "r");
 	if (fp == NULL)
@@ -1492,7 +1712,7 @@ static int read_text_file(const char *filename, char **buf, int *filesize) {
 	*filesize = ftell(fp);
 	rewind(fp);
 	*buf = (char*)malloc(*filesize + 1);
-	memset(*buf, 0, *filesize);
+	memset(*buf, 0, *filesize + 1);
 	size_t res = fread(*buf, 1, *filesize, fp);
 	fclose(fp);
 	return 0;
@@ -1500,7 +1720,384 @@ static int read_text_file(const char *filename, char **buf, int *filesize) {
 	return 0;
 }
 
-int parser_compile(const char *filename, char **out_program, int *out_program_size) {
+typedef struct {
+	char *buffer;
+	size_t capacity;
+	size_t size;
+} kstring_t; //kinda string
+
+void kstring_resize(kstring_t *k, int spaceneeded)
+{
+	int nn = k->size + spaceneeded;
+	if (nn >= k->capacity || !k->buffer) {
+		//we need a resize
+		int nc = k->capacity + (nn * 2) + 1;
+		char *n = xmalloc(nc);
+		if (!n)
+			return;
+		if (k->buffer)
+			memcpy(n, k->buffer, k->size);
+		xfree(k->buffer);
+		k->buffer = n;
+		k->capacity = nc;
+	}
+}
+
+void kstring_push_back(kstring_t *k, int c) {
+	kstring_resize(k, 1);
+	k->buffer[k->size] = c;
+	++k->size;
+	k->buffer[k->size] = '\0';
+}
+
+void kstring_add(kstring_t *k, const char *s) {
+	size_t sz = strlen(s);
+	kstring_resize(k, sz);
+
+	strncpy(&k->buffer[k->size], s, sz);
+	k->size += sz;
+	k->buffer[k->size] = 0;
+}
+
+void kstring_addn(kstring_t *k, const char *s, int i) {
+	size_t sz = strlen(s);
+	if (i <= sz)
+		sz = i;
+
+	kstring_resize(k, sz);
+
+	strncpy(&k->buffer[k->size], s, sz);
+	k->size += sz;
+	k->buffer[k->size] = 0;
+}
+
+void kstring_init(kstring_t *k) {
+	k->buffer = 0;
+	k->size = 0;
+	k->capacity = 0;
+	kstring_resize(k, 32);
+}
+
+void kstring_free(kstring_t *k)
+{
+	xfree(k->buffer);
+	k->buffer = NULL;
+}
+
+void kstring_clear(kstring_t *k)
+{
+	k->size = 0;
+	k->capacity = 0;
+	kstring_free(k);
+}
+
+size_t kstring_length(kstring_t *k) { return k->size; }
+
+void kstring_set(kstring_t *k, const char *s)
+{
+	kstring_clear(k);
+	kstring_add(k, s);
+}
+
+const char *kstring_get(kstring_t *k)
+{
+	return k->buffer;
+}
+
+void kstring_addk(kstring_t *k, kstring_t *s) {
+	size_t sz = kstring_length(s);
+	kstring_resize(k, sz);
+
+	strncpy(&k->buffer[k->size], kstring_get(s), sz);
+	k->size += sz;
+	k->buffer[k->size] = 0;
+}
+
+typedef enum {
+	PRE_ERR_EXPECTED_IDENTIFIER,
+} e_pre_err;
+
+typedef struct {
+	char name[256];
+	kstring_t value;
+} def_t;
+
+typedef struct {
+	kstring_t macro;
+	kstring_t contents;
+} pre_t;
+
+void pre_clear_defines(vector *def)
+{
+	for (int i = 0; i < vector_count(def); ++i) {
+		def_t *d = (def_t*)vector_get(def, i);
+		kstring_free(&d->value);
+		xfree(d);
+	}
+	vector_free(def);
+}
+
+int pre_err(parser_t *pp, const char *errstr, ...) {
+
+	char dest[1024 * 16];
+	va_list argptr;
+	if (errstr != NULL) {
+		va_start(argptr, errstr);
+		vsprintf(dest, errstr, argptr);
+		va_end(argptr);
+		printf("%s\n", dest);
+	}
+	pre_t *pre = (pre_t*)pp->userdata;
+	kstring_free(&pre->macro);
+	kstring_free(&pre->contents);
+
+	parser_cleanup(pp);
+	return errstr == NULL ? 0 : 1;
+}
+
+int pp_locate(parser_t *pp, int token, int *invalid_tokens)
+{
+	int ret = -1;
+	pp_save(pp);
+	int prev = 0;
+	while (1)
+	{
+		prev = pp->curpos;
+		int t = parser_read_next_token(pp);
+
+		bool brk = false;
+		for (int i = 0; invalid_tokens && invalid_tokens[i] != TK_EOF; ++i)
+		{
+			if (invalid_tokens[i] == t) { brk = true; break; }
+		}
+		if (brk || t == TK_EOF) break;
+
+		if (t == token) {
+			ret = prev;
+			break;
+		}
+	}
+	pp_restore(pp);
+	return ret;
+}
+
+int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines)
+{
+	parser_t *pp = (parser_t*)xmalloc(sizeof(parser_t));
+	parser_init(pp);
+	pp->flags |= PARSER_FLAG_TOKENIZE_NEWLINE;
+	static int etokens[] = {TK_IDENT,TK_SHARP,TK_EOF};
+	pp->enabledtokens = &etokens;
+	pp->scriptbuffer = buf;
+	pp->scriptbuffersize = sz;
+	
+	pre_t pre;
+	kstring_init(&pre.contents);
+	kstring_init(&pre.macro);
+
+	pp->userdata = &pre;
+
+	while (1) //TODO FIX THIS
+	{
+		if (pp_accept(pp, TK_EOF))
+		{
+			//printf("breaking already\n");
+			break;
+		}
+		kstring_clear(&pre.contents);
+		kstring_clear(&pre.macro);
+		//if (pp_accept(pp, TK_SHARP))
+		int pft = pp_tell(pp); //position before token
+
+		int token = parser_read_next_token(pp);
+		//printf("token = %s %s\n", lex_token_strings[token], pp->string);
+		switch(token)
+		{
+
+		def_behav:
+		default: {
+			//just copy the tokens i guess
+			//printf("token=%s\n", lex_token_strings[token]);
+			int cur = pp_tell(pp);
+			for (int i = pft; i < cur; ++i)
+				kstring_push_back(out, buf[i]);
+		} break;
+
+		case TK_IDENT: {
+			//first go through our definitions and replace ones that we have
+			int nd = vector_count(defines);
+			bool ff = false;
+			for (int i = nd; i--;)
+			{
+				def_t *d = (def_t*)vector_get(defines, i);
+				if (!strcmp(d->name, pp->string))
+				{
+					//printf("found definition %s\n", d->name);
+					//add the definition
+					kstring_addk(out, &d->value);
+					ff = true;
+				}
+			}
+			if (!ff)
+				goto def_behav;
+		} break;
+
+		case TK_SHARP:
+			if (!pp_accept(pp, TK_IDENT))
+			{
+				token = parser_read_next_token(pp);
+				return pre_err(pp, "expected identifier got %s %d\n%s", lex_token_strings[token], token, &buf[pft]);
+			}
+			if (!strcmp(pp->string, "endif")) {
+
+			} else if (!strcmp(pp->string, "else")) {
+
+			} else if(!strcmp(pp->string, "if")) {
+				//skip till end of line
+				int loc = pp_locate(pp, TK_NEWLINE, NULL);
+				if (loc == -1)
+					return pre_err(pp, "unexpected end of file");
+				pp_goto(pp, loc);
+			} else if (!strcmp(pp->string, "define"))
+			{
+				if (!pp_accept(pp, TK_IDENT))
+					return pre_err(pp, "expected identifier, bad macro name!");
+
+				kstring_set(&pre.macro, pp->string);
+
+				//take everything of the rest till newline so we can copy it
+				pp_save(pp);
+				while(1) {
+					int bs = pp_locate(pp, TK_BACKSLASH, NULL);
+					int nl = pp_locate(pp, TK_NEWLINE, NULL);
+					if (bs == -1 && nl == -1)
+						return pre_err(pp, "unexpected end of file!");
+					int low = nl;
+					if (bs != -1 && bs < nl)
+						low = bs;
+					for (int i = sav; i < low; ++i) {
+						kstring_push_back(&pre.contents, buf[i]);
+					}
+					if (bs != -1)
+						sav = nl + 1;
+					else
+						sav = low + 1;
+					pp_goto(pp, sav);
+					if (bs == -1)
+						break;
+					if (nl < bs) //the newline comes before the backslash so we break
+						break;
+				}
+				//fix maybe later require a space in the define?
+				//printf("DEFINE %s = %s\n", kstring_get(&pre.macro), kstring_get(&pre.contents));
+				//pp_restore(pp);
+
+				def_t *d = (def_t*)xmalloc(sizeof(def_t));
+				snprintf(d->name, sizeof(d->name), "%s", kstring_get(&pre.macro));
+				kstring_init(&d->value);
+				kstring_set(&d->value, kstring_get(&pre.contents));//uhh okay
+				vector_add(defines, d);
+				//pp_goto(pp, loc); //cuz newline is 1 character here
+			} else if(!strcmp(pp->string, "include")) {
+				if (!pp_accept(pp, TK_LESS))
+					return pre_err(pp, "expected <");
+				//get everything inbetween here
+				pp_save(pp);
+				int illegal[2] = { TK_NEWLINE,TK_EOF };
+				int loc = pp_locate(pp, TK_GREATER, illegal);
+				if (loc == -1)
+					return pre_err(pp, "error expecting greater, can't find it!");
+
+				for (int i = sav; i < loc; i++) {
+					kstring_push_back(&pre.contents, buf[i]);
+				}
+
+				//pp_restore(pp);
+				pp_goto(pp, loc);
+				if (!pp_accept(pp, TK_GREATER))
+					return pre_err(pp, "expected >");
+				
+				int cur = pp_tell(pp);
+
+				//printf("contents=%s\n", kstring_get(&pre.contents));
+				char *fbuf = NULL;
+				size_t fsize = 0;
+				if(read_text_file(kstring_get(&pre.contents),&fbuf,(int*)&fsize))
+				{
+					return pre_err(pp, "failed to open include file '%s'!",kstring_get(&pre.contents));
+				}
+				kstring_t tmp;
+				kstring_init(&tmp);
+
+				//process this file aswell recursively
+				if (pre_buf(fbuf, fsize, &tmp, defines))
+				{
+					kstring_free(&tmp);
+					return pre_err(pp, "failed to pre_buf recursively!");
+				}
+				//printf("tmp = %s\n", kstring_get(&tmp));
+				kstring_addk(out, &tmp);
+				kstring_free(&tmp);
+			} else {
+				return pre_err(pp, "unknown directive '%s'!", pp->string);
+			}
+			break;
+		}
+	}
+	return pre_err(pp, NULL);
+}
+
+typedef struct
+{
+	int offset;
+	int size;
+	union
+	{
+		uint32_t u32;
+		uint16_t u16;
+		uint8_t u8[4];
+	} u;
+	dynarray buffer;
+} tinystream_t;
+
+void ts_init(tinystream_t *ts)
+{
+	ts->offset = 0;
+	ts->size = 0;
+	array_init(&ts->buffer, char);
+}
+
+void ts_free(tinystream_t *ts)
+{
+	array_free(&ts->buffer);
+}
+
+void ts8(tinystream_t *ts, uint8_t i)
+{
+	unsigned char c = i & 0xff;
+	array_push(&ts->buffer, &c);
+	++ts->offset;
+}
+void ts16(tinystream_t *ts, uint16_t n)
+{
+	char *p = (char*)&n;
+	array_push(&ts->buffer, p);
+	array_push(&ts->buffer, p + 1);
+	ts->offset += 2;
+}
+
+void ts32(tinystream_t *ts, uint32_t n)
+{
+	char *p = (char*)&n;
+	array_push(&ts->buffer, p);
+	array_push(&ts->buffer, p+1);
+	array_push(&ts->buffer, p+2);
+	array_push(&ts->buffer, p+3);
+	ts->offset += 4;
+}
+
+int parser_compile_string(const char *scriptbuf, char **out_program, int *out_program_size)
+{
 	*out_program = NULL;
 	*out_program_size = 0;
 
@@ -1508,12 +2105,25 @@ int parser_compile(const char *filename, char **out_program, int *out_program_si
 	
 	parser_t *pp = (parser_t*)xmalloc(sizeof(parser_t));
 	parser_init(pp);
+	pp->scriptbuffer = scriptbuf;
+	pp->scriptbuffersize = strlen(scriptbuf);
 
-	if (read_text_file(filename, &pp->scriptbuffer, (int*)&pp->scriptbuffersize)) {
-		printf("failed to read file '%s'\n", filename);
+	vector defines;
+	vector_init(&defines);
+	kstring_t processed;
+	kstring_init(&processed);
+	if (pre_buf(pp->scriptbuffer, pp->scriptbuffersize, &processed, &defines)) {
+		kstring_free(&processed);
+		pre_clear_defines(&defines);
 		return 1;
 	}
-
+	pre_clear_defines(&defines);
+	//xfree(pp->scriptbuffer);
+	pp->scriptbuffer = kstring_get(&processed);
+	//printf("processed = %s\n", pp->scriptbuffer);
+	pp->scriptbuffersize = kstring_length(&processed);
+	//return 1;
+	//printf("Compiling '%s'\n", pp->scriptbuffer);
 	//printf("scriptbuffer size = %d\n",pp->scriptbuffersize);
 
 	pp->program = (char*)xmalloc(pp->scriptbuffersize * 4); //i don't think the actual program will be this size lol
@@ -1553,7 +2163,39 @@ int parser_compile(const char *filename, char **out_program, int *out_program_si
 	}
 
 	*out_program_size = total_size + sizeof(int) + sizeof(int) + sizeof(int);
+#if 1
+	tinystream_t ts;
+	ts_init(&ts);
+	//printf("structs size = %d\n", pp->structs.size);
+	ts32(&ts, pp->structs.size);
+	for (int i = 0; i < pp->structs.size; i++)
+	{
+		array_get(&pp->structs, cstruct_t, cs, i);
+		for (int j = 0; j < strlen(cs->name); j++)
+		{
+			ts8(&ts, cs->name[j]);
+		}
+		ts8(&ts, 0); //end of name
+		ts32(&ts, cs->size);
+		ts16(&ts, cs->fields.size); //numfields
+		for (int k = 0; k < cs->fields.size; k++)
+		{
+			array_get(&cs->fields, cstructfield_t, field, k);
+			for (int j = 0; j < strlen(field->name); j++)
+			{
+				ts8(&ts, field->name[j]);
+			}
+			ts8(&ts, 0);
+			ts32(&ts, field->offset);
+			ts32(&ts, field->size);
+			//printf("field->type=%d\n", field->type);
+			ts32(&ts, field->type);
+			ts32(&ts, 0); //TODO FIX THIS
+		}
+	}
 
+	*out_program_size += (ts.buffer.size + sizeof(int));
+#endif
 	rearranged_program = (char*)xmalloc(*out_program_size);
 	int rearranged_program_pc = 0;
 
@@ -1590,7 +2232,11 @@ int parser_compile(const char *filename, char **out_program, int *out_program_si
 		}
 	}
 
-	*(int*)(rearranged_program + 1) = rearrange_main;//call <loc> replace?
+	*(int*)(&rearranged_program[0] + 1) = rearrange_main;//call <loc> replace?
+	int start_structs = rearranged_program_pc;
+	memcpy(&rearranged_program[rearranged_program_pc], ts.buffer.data, ts.buffer.size);
+	rearranged_program_pc += ts.buffer.size;
+
 	int start_defs = rearranged_program_pc;
 
 #if 1
@@ -1632,12 +2278,29 @@ int parser_compile(const char *filename, char **out_program, int *out_program_si
 	*(int*)(rearranged_program + rearranged_program_pc) = pp->code_segment_size + 1;//call <loc> replace?
 	rearranged_program_pc += sizeof(int);
 	*(int*)(rearranged_program + rearranged_program_pc) = start_defs;
+	rearranged_program_pc += sizeof(int);
+	*(int*)(rearranged_program + rearranged_program_pc) = start_structs;
+	rearranged_program_pc += sizeof(int);
 
+	ts_free(&ts);
 	xfree(pp->program);
+	
+	kstring_free(&processed);
 
 	*out_program = rearranged_program;
 	if (pp->error)
 		retcode = 1;
 	parser_cleanup(pp);
 	return retcode;
+}
+
+int parser_compile(const char *filename, char **out_program, int *out_program_size)
+{
+	char *sb;
+	size_t sbs;
+	if (read_text_file(filename, &sb, (int*)&sbs)) {
+		printf("failed to read file '%s'\n", filename);
+		return 1;
+	}
+	return parser_compile_string(sb, out_program, out_program_size);
 }

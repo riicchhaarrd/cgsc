@@ -4,14 +4,47 @@
 #include "stdheader.h"
 
 #define MAX_VARIABLES 1024
-#define MAX_LOCAL_VARS (255)
+#define MAX_LOCAL_VARS (32)
 
+#define VV_INTEGER uintptr_t
 #define VV_USE_REF(x) ((x)&&(x->type==VAR_TYPE_OBJECT || x->type==VAR_TYPE_ARRAY))
 #define VV_IS_STRING(x) ((x)&&(x->type==VAR_TYPE_STRING||x->type==VAR_TYPE_INDEXED_STRING))
 #define VV_TYPE(x) (x ? x->type : VAR_TYPE_NULL)
-#define VV_TYPE_STRING(x) (e_var_types_strings[VV_TYPE(x)])
+
+//#define VV_TYPE_STRING(x) (e_var_types_strings[VV_TYPE(x)])
+#define VV_TYPE_STRING(x) vv_get_type_string(x)
+//#define VV_IS_NUMBER(x) (VV_TYPE(x) == VAR_TYPE_INT || VV_TYPE(x) == VAR_TYPE_FLOAT)
+static inline bool VV_IS_NUMBER(varval_t *vv)
+{
+	switch (VV_TYPE(vv))
+	{
+	case VAR_TYPE_LONG:
+	case VAR_TYPE_INT:
+	case VAR_TYPE_SHORT:
+	case VAR_TYPE_CHAR:
+	case VAR_TYPE_FLOAT:
+	case VAR_TYPE_DOUBLE:
+		return true;
+	}
+	return false;
+}
+static bool VV_IS_INTEGRAL(varval_t *vv)
+{
+	switch (VV_TYPE(vv))
+	{
+	case VAR_TYPE_DOUBLE:
+	case VAR_TYPE_FLOAT:
+		return false;
+	}
+	return true;
+}
+#define VV_IS_POINTER(x) (x != NULL && (x->flags & VF_POINTER) == VF_POINTER)
+#define VV_IS_UNSIGNED(x) (x && (x->flags & VF_UNSIGNED) == VF_UNSIGNED)
+
+typedef long long vm_long_t;
 
 static const char *e_var_types_strings[] = {
+#if 0
 	"int",
 	"float",
 	"char",
@@ -22,10 +55,36 @@ static const char *e_var_types_strings[] = {
 	"object",
 	"object reference",
 	"null",
+#endif
+
+	"CHAR",
+	"SHORT",
+	"INT",
+	"LONG",
+	"FLOAT",
+	"DOUBLE",
+
+	"STRING",
+	"INDEXED_STRING",
+	"VECTOR",
+	"ARRAY",
+	"OBJECT",
+	"OBJECT_REFERENCE",
+	"FUNCTION_POINTER",
+	"NULL", //the vv is NULL itself
 	0
 };
 
 #define VF_LOCAL (1<<0)
+#define VF_CACHED (1<<1)
+#define VF_POINTER (1<<2)
+#define VF_UNSIGNED (1<<3)
+
+static const char *vv_get_type_string(varval_t *vv) {
+	static char typestring[256] = { 0 };
+	snprintf(typestring, sizeof(typestring), "%s%s%c", VV_IS_UNSIGNED(vv) ? "unsigned": "", e_var_types_strings[VV_TYPE(vv)], VV_IS_POINTER(vv) ? '*' : '\0');
+	return typestring;
+}
 
 typedef struct {
 	char name[256];

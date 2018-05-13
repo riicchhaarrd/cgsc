@@ -1,6 +1,7 @@
 #pragma once
 
 #include "stdheader.h"
+#include "dynarray.h"
 
 typedef struct {
 	int original_loc, assigned_loc;
@@ -25,6 +26,12 @@ typedef struct {
 	int numargs;
 } scr_function_t;
 
+typedef enum {
+	PARSER_FLAG_NONE= 0,
+	PARSER_FLAG_TOKENIZE_NEWLINE = (1 << 0),
+	PARSER_FLAG_TOKENIZE_WHITESPACE = (1<<1),
+} e_parser_flags_t;
+
 typedef struct {
 	int curpos;
 	int prevpos;
@@ -32,7 +39,9 @@ typedef struct {
 	int scriptbuffersize;
 	int lineno;
 	bool execute;
-
+	int flags;
+	int *enabledtokens;
+	//size_t numenabledtokens;
 	var_t *local_vars[MAX_LOCAL_VARS]; //max of short
 
 	int token;
@@ -70,8 +79,11 @@ typedef struct {
 	int numistrings;
 	int numfunctions;
 	int not;
+	void *userdata;
 
 	int last_member_token, last_member_index;
+
+	dynarray structs;
 } parser_t;
 
 static var_t *parser_find_local_variable(parser_t*, const char*);
