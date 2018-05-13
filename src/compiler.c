@@ -588,7 +588,7 @@ static void program_add_opcode(parser_t *pp, uint8_t opcode) {
 
 	pp->program[pp->program_counter++] = opcode;
 	const char *opcode_str = opcode < OP_END_OF_LIST ? e_opcodes_strings[opcode] : "[not opcode]";
-	printf("program_add_opcode(%s) => %d (0x%x)\n", opcode_str, opcode, opcode);
+	//printf("program_add_opcode(%s) => %d (0x%x)\n", opcode_str, opcode, opcode);
 }
 
 static void program_add_int(parser_t *pp, uint32_t i) {

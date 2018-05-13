@@ -79,6 +79,7 @@ static const char *e_var_types_strings[] = {
 #define VF_CACHED (1<<1)
 #define VF_POINTER (1<<2)
 #define VF_UNSIGNED (1<<3)
+#define VF_FFI (1<<4)
 
 static const char *vv_get_type_string(varval_t *vv) {
 	static char typestring[256] = { 0 };

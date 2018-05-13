@@ -812,7 +812,11 @@ int vm_do_jit(vm_t *vm, const char *libname, const char *funcname)
 	retval = call();
 	//printf("retval=%d\n", retval);
 	//printf("err = %s\n", strerror(errno));
-	se_addint(vm, retval);
+	varval_t *vv = se_vv_create(vm, VAR_TYPE_INT); //should be fine for x86
+	vv->as.integer = retval;
+	vv->flags |= VF_FFI;
+	stack_push(vm, vv);
+	//se_addint(vm, retval);
 	status = FFI_SUCCESS;
 
 _ffi_end:

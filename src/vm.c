@@ -129,6 +129,10 @@ varval_t *vv_cast(vm_t *vm, varval_t *vv, int desired_type)
 		}
 	} break;
 	case VAR_TYPE_STRING:
+		if(vv->flags & VF_FFI) {
+			c->as.string = NULL;
+			vv_string_set(vm, c, vv->as.ptr); //actually is just c char *
+		} else
 		vv_string_set(vm, c, se_vv_to_string(vm, vv));
 		break;
 	case VAR_TYPE_VECTOR: {
