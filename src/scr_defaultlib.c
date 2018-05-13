@@ -1,16 +1,27 @@
 #include "virtual_machine.h"
 #include "common.h"
 #include "x86.h"
-
+#ifdef _WIN32
 #include <winsock2.h>
 #include <wsipx.h>
 #include <Ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
-
+#else
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#define INVALID_SOCKET (-1)
+#define SOCKET_ERROR (-1)
+#define SOCKET int
+#include <dlfcn.h>
+#include <sys/mman.h>
+#endif
 //#pragma comment(lib, "SDL2.lib")
-
+#ifdef _WIN32
 static bool wsa_init = false;
-
+#endif
 bool resolve_adr(const char *addr_str, struct sockaddr_in *adr) {
 	char ip_str[256] = { 0 };
 	int ip_stri = 0;
@@ -41,10 +52,11 @@ bool resolve_adr(const char *addr_str, struct sockaddr_in *adr) {
 	//Common::Printf("Resolved address: %s:%s to %s\n", ip_str, (port_str + 1), adr->getIPString());
 	return true;
 }
-
+#ifdef _WIN32
 static WSADATA wsaData;
-
+#endif
 static int sf_sendpacket(vm_t *vm) {
+#ifdef _WIN32
 	if (!wsa_init) {
 		if (WSAStartup(MAKEWORD(2, 0), &wsaData) != 0) {
 			printf("wsastartup failed\n");
@@ -52,6 +64,7 @@ static int sf_sendpacket(vm_t *vm) {
 		}
 		wsa_init = true;
 	}
+#endif
 	SOCKET sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (sock == INVALID_SOCKET) {
 		printf("failed to create socket\n");
@@ -541,12 +554,20 @@ int vm_do_jit(vm_t *vm, HMODULE lib, DWORD addr, varval_t **argv, int argc)
 	//__asm int 3
 	int funcsize = 2000;
 
+#ifdef _WIN32
 	SYSTEM_INFO system_info;
 	GetSystemInfo(&system_info);
 	auto const page_size = system_info.dwPageSize;
-
+#else
+	int page_size = getpagesize();
+#endif
 	// prepare the memory in which the machine code will be put (it's not executable yet):
+#ifdef _WIN32
 	char *jit = VirtualAlloc(0, page_size, MEM_COMMIT, PAGE_READWRITE);
+#else
+	char *jit = (char*)mmap(NULL, page_size, PROT_READ | PROT_WRITE | PROT_EXEC,
+	MAP_PRIVATE | MAP_ANON, -1, 0);
+#endif
 
 #define JIT_EMIT_DWORD(x) \
 	*(uint32_t*)&jit[j] = x; \
@@ -670,7 +691,18 @@ int vm_do_jit(vm_t *vm, const char *libname, const char *funcname)
 {
 	int status = FFI_GENERIC_ERROR;
 
+#ifndef _WIN32
+#define HMODULE void*
+#define DWORD void*
+#define GetProcAddress dlsym
+#define FreeLibrary dlclose
+#endif
+
+#ifdef _WIN32
 	HMODULE lib = LoadLibraryA(libname);
+#else
+	void *lib = dlopen(libname, RTLD_LAZY);
+#endif
 	if (!lib)
 		return FFI_LIBRARY_NOT_FOUND;
 	DWORD addr = GetProcAddress(lib, funcname);
@@ -679,13 +711,19 @@ int vm_do_jit(vm_t *vm, const char *libname, const char *funcname)
 		return FFI_FUNCTION_NOT_FOUND;
 	}
 	int funcsize = 2000;
-
+	size_t page_size=0;
+#ifdef _WIN32
 	SYSTEM_INFO system_info;
 	GetSystemInfo(&system_info);
-	auto const page_size = system_info.dwPageSize;
+	page_size = system_info.dwPageSize;
 
 	// prepare the memory in which the machine code will be put (it's not executable yet):
 	char *buf = VirtualAlloc(0, page_size, MEM_COMMIT, PAGE_READWRITE);
+#else
+	page_size=getpagesize();
+	char *buf = (char*)mmap(NULL, page_size, PROT_READ | PROT_WRITE | PROT_EXEC,
+        MAP_PRIVATE | MAP_ANON, -1, 0);
+#endif
 	char *jit = buf;
 	jit += 32;
 
@@ -760,8 +798,12 @@ int vm_do_jit(vm_t *vm, const char *libname, const char *funcname)
 
 	j = jit - buf;
 	//printf("j=%02X\n", j);
+#ifdef _WIN32
 	DWORD old;
 	VirtualProtect(buf, page_size, PAGE_EXECUTE_READ, &old);
+#else
+	mprotect(buf,page_size,PROT_READ | PROT_EXEC | PROT_WRITE);
+#endif
 	void*(*call)() = (void*(*)())buf;
 
 	//__asm int 3
@@ -774,7 +816,11 @@ int vm_do_jit(vm_t *vm, const char *libname, const char *funcname)
 	status = FFI_SUCCESS;
 
 _ffi_end:
+#ifdef _WIN32
 	VirtualFree(buf, 0, MEM_RELEASE);
+#else
+	munmap(jit, page_size);
+#endif
 	return status;
 }
 
@@ -788,12 +834,6 @@ int sf_set_ffi_lib(vm_t *vm)
 		name
 	);
 	return 0;
-}
-
-static int sf_errno(vm_t *vm)
-{
-	se_addint(vm, errno);
-	return 1;
 }
 
 void obj_buffer_deconstructor(vm_t *vm, void *p)
@@ -827,7 +867,6 @@ stockfunction_t std_scriptfunctions[] = {
 	{ "sinf",sf_m_sinf },
 	{"cosf",sf_m_cosf},
 
-	{ "errno", sf_errno },
 	{"exit", sf_exit},
 	{ "buffer", sf_buffer },
 	{ "set_ffi_lib", sf_set_ffi_lib },

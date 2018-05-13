@@ -1,5 +1,4 @@
 #pragma once
-
 #include "stdheader.h"
 
 typedef enum {

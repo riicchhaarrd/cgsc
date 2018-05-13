@@ -8,3 +8,6 @@
 #include <time.h>
 #include <malloc.h>
 #include <string.h>
+#ifndef _WIN32
+#define stricmp strcasecmp
+#endif

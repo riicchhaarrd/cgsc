@@ -1,4 +1,5 @@
 #pragma once
+#include "stdheader.h"
 #include "dynstring.h"
 #include "dynarray.h"
 #include <stdbool.h>
@@ -120,7 +121,7 @@ CSTRUCTPARSER_FUNCTION bool is_win32_handle(const char *s)
 {
 	for (int i = 0; win32_handles[i]; ++i)
 	{
-		if (!_stricmp(win32_handles[i], s))
+		if (!stricmp(win32_handles[i], s))
 			return true;
 	}
 	return false;
@@ -239,7 +240,7 @@ CSTRUCTPARSER_FUNCTION int get_ctype_for_keywords(dynstring *keywords, int n)
 			{
 				for (int k = 0; ctypepairs[j].keywords[k]; ++k)
 				{
-					if (!_stricmp(ctypepairs[j].keywords[k], keywords[i]))
+					if (!stricmp(ctypepairs[j].keywords[k], keywords[i]))
 					{
 						curtype = ctypepairs[j].type;
 					}

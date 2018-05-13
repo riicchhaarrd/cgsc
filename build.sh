@@ -12,6 +12,7 @@ $cc -c vm.c -o obj/vm.o
 $cc -c cvector.c -o obj/cvector.o
 $cc -c common.c -o obj/common.o
 $cc -c standalone.c -o obj/standalone.o
+$cc -c x86.c -o obj/x86.o
 echo "Made all obj files."
 
 obj="$(ls obj/*.o)"

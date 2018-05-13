@@ -55,8 +55,6 @@ DYN_INLINE DYN_STATIC size_t dynlen(dynstring *s)
 	return hdr->size;
 }
 
-extern void dynadd(dynstring *s, const char *str);
-
 DYN_INLINE DYN_STATIC void dynpush(dynstring *s, int i)
 {
 	dynstringhdr_t *hdr = 0;
@@ -85,25 +83,8 @@ DYN_INLINE DYN_STATIC void dynpush(dynstring *s, int i)
 	}
 }
 
-DYN_INLINE DYN_STATIC void dynaddn(dynstring *s, const char *str, size_t n)
-{
-	int sl = strlen(str);
-	if (n >= sl)
-		n = sl;
-
-	if (*s == NULL)
-		*s = dynalloc(n);
-
-	for (int i = 0; i < n; ++i)
-	{
-		dynpush(s, *(char*)(str + i));
-	}
-}
-
-DYN_INLINE DYN_STATIC void dynadd(dynstring *s, const char *str)
-{
-	dynaddn(s, str, strlen(str));
-}
+void dynaddn(dynstring *s, const char *str, size_t n);
+void dynadd(dynstring*,const char *);
 
 DYN_INLINE DYN_STATIC void dynaddf(dynstring *s, const char *fmt, ...)
 {

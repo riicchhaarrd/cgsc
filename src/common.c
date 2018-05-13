@@ -6,6 +6,29 @@
 #include <errno.h>
 #endif
 
+#include "dynstring.h"
+
+void dynaddn(dynstring *s, const char *str, size_t n)
+{
+        int sl = strlen(str);
+        if (n >= sl)
+                n = sl;
+
+        if (*s == NULL)
+                *s = dynalloc(n);
+
+        for (int i = 0; i < n; ++i)
+        {
+                dynpush(s, *(char*)(str + i));
+        }
+}
+
+void dynadd(dynstring *s, const char *str)
+{
+        dynaddn(s, str, strlen(str));
+}
+
+
 int sys_get_files_from_path(const char *path, file_info_t **files, size_t *outnumfiles) {
 	*files = NULL;
 	*outnumfiles = 0;

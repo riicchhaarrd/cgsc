@@ -2,7 +2,9 @@
 #include "virtual_machine.h"
 #include "common.h"
 #include <signal.h>
+#ifdef _WIN32
 #include <Windows.h>
+#endif
 /* used this to test C SDL ffi */
 //#include <SDL.h>
 //#undef main

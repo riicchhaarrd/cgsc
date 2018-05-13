@@ -235,13 +235,16 @@ int vm_set_struct_field_value(vm_t *vm, cstruct_t *cs, cstructfield_t *field, vt
 	return 1;
 }
 
+#define Q_MIN(a,b) (a) > (b) ? (b) : (a)
+#define Q_MAX(a,b) (a) > (b) ? (a) : (b)
+
 int vv_icmp(vm_t *vm, varval_t *a, varval_t *b)
 {
 	if (VV_IS_INTEGRAL(a) && VV_IS_INTEGRAL(b))
 	{
 		int sa = vv_integer_internal_size(a);
 		int sb = vv_integer_internal_size(b);
-		int smallest = min(sa, sb);
+		int smallest = Q_MIN(sa, sb);
 		return memcmp(&a->as, &b->as, smallest);
 	}
 	else {
@@ -347,7 +350,7 @@ const char *se_vv_to_string(vm_t *vm, varval_t *vv) {
 #ifdef _WIN32
 		return itoa(vv->as.integer, string, 10);
 #else
-		snprintf(string, sizeof(string), "%d", vv->integer);
+		snprintf(string, sizeof(string), "%d", vv->as.integer);
 		return string;
 #endif	
 	//note %f and %lf are same, since float gets promoted to double when calling printf
@@ -565,7 +568,7 @@ static VM_INLINE vm_scalar_t vm_vector_dot(vm_vector_t *a, vm_vector_t *b) {
 	vm_scalar_t total = 0.0;
 	int na = vm_vector_num_elements(a);
 	int nb = vm_vector_num_elements(b);
-	int mx = max(na, nb);
+	int mx = Q_MAX(na, nb);
 	for (int i = mx; i--;)
 		total += (a->value[i % na] * b->value[i % nb]);
 	return total;
@@ -634,13 +637,13 @@ void vm_vector_math_op(vm_t *vm, vm_vector_t *va, vm_vector_t *vb, vm_vector_t *
 {
 	int na = va->nelements;
 	int nb = vb->nelements;
-	int nm = max(na, nb);
+	int nm = Q_MAX(na, nb);
 	vm_scalar_t *a = (vm_scalar_t*)&va->value[0];
 	vm_scalar_t *b = (vm_scalar_t*)&vb->value[0];
 	vm_scalar_t *c = (vm_scalar_t*)&vc->value[0];
 	//printf("na=%d,nb=%d,max=%d\n", na, nb, nm);
 #define MATH_VEC_OP_MACRO(x, y) \
-case x ## : \
+case x: \
 for (int i = nm; i--;) \
 c[i] = a[i % na] y b[i % nb]; \
 break; \
