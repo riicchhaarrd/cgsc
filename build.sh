@@ -1,5 +1,5 @@
 #!/bin/bash
-cc="gcc -w -O2 -std=gnu99 -fPIC -DCIDSCROPT_STANDALONE" #add -s for stripping ayy :D
+cc="gcc -m32 -w -O2 -std=gnu99 -fPIC -DCIDSCROPT_STANDALONE" #add -s for stripping ayy :D
 #cc="g++ -s -O2 -std=c++11"
 cd src
 mkdir -p obj
