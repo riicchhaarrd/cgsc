@@ -76,7 +76,7 @@ struct vm_s {
 	vector vars;
 
 	intptr_t stack[100]; //small stack for pushing stuff to the threads which pops it later again
-	int registers[e_vm_reg_len];
+	intptr_t registers[e_vm_reg_len];
 
 	/* //are now thread specific
 	int registers[e_vm_reg_len];
@@ -95,7 +95,7 @@ struct vm_s {
 	bool close_requested;
 	vector functioninfo;
 
-	int tmpstack[512];
+	intptr_t tmpstack[512];
 
 	vt_istring_t *istringlist;
 	int istringlistsize;

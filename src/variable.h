@@ -7,7 +7,7 @@
 #define MAX_LOCAL_VARS (32)
 
 #define VV_INTEGER uintptr_t
-#define VV_USE_REF(x) ((x)&&(x->type==VAR_TYPE_OBJECT || x->type==VAR_TYPE_ARRAY))
+#define VV_USE_REF(x) (x != NULL && (x->type==VAR_TYPE_OBJECT || x->type==VAR_TYPE_ARRAY))
 #define VV_IS_STRING(x) ((x)&&(x->type==VAR_TYPE_STRING||x->type==VAR_TYPE_INDEXED_STRING))
 #define VV_TYPE(x) (x ? x->type : VAR_TYPE_NULL)
 

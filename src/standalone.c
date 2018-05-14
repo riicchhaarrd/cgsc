@@ -28,7 +28,7 @@ int main(int argc, char **argv) {
 	}
 	const char *filename = argv[1];
 #else
-	const char *filename = "../examples/test.gsc";
+	const char *filename = "../examples/test.gcx";
 #endif
 #ifdef _WIN32
 	LARGE_INTEGER freq;

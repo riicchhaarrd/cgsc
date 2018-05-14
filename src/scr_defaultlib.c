@@ -1,6 +1,6 @@
 #include "virtual_machine.h"
 #include "common.h"
-#include "x86.h"
+#include "asm.h"
 #ifdef _WIN32
 #include <winsock2.h>
 #include <wsipx.h>

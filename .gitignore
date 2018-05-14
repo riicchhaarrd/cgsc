@@ -9,3 +9,9 @@
 *.iobj
 *.ipdb
 *.o
+*.db
+*.opendb
+*.ipch
+*.ilk
+*.exp
+*.dll

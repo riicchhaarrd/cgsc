@@ -1,4 +1,4 @@
-#include "x86.h"
+#include "asm.h"
 
 void emit(u8 **p, u8 op)
 {

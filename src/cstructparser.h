@@ -3,6 +3,7 @@
 #include "dynstring.h"
 #include "dynarray.h"
 #include <stdbool.h>
+#include <ctype.h>
 #define CSTRUCTPARSER_FUNCTION static
 
 #define SOURCE_STRING(...) #__VA_ARGS__

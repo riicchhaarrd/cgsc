@@ -1,6 +1,22 @@
 #pragma once
 #include <stdint.h>
 
+#if _WIN32 || _WIN64
+#if _WIN64
+#define ARCH_X64
+#else
+#define ARCH_X86
+#endif
+#endif
+
+#if __GNUC__
+#if __x86_64__ || __ppc64__
+#define ARCH_X64
+#else
+#define ARCH_X86
+#endif
+#endif
+
 typedef enum
 {
 	REG_EAX,

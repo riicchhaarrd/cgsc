@@ -231,7 +231,10 @@ int vm_set_struct_field_value(vm_t *vm, cstruct_t *cs, cstructfield_t *field, vt
 	} break;
 	case CTYPE_POINTER: {
 		void **p = (void**)&vtb->data[field->offset];
-		*p = vv_cast_long(vm, vv);
+		if (VV_IS_STRING(vv))
+			*p = se_vv_to_string(vm, vv);
+		else
+			*p = vv_cast_long(vm, vv);
 	} break;
 	default:
 		return 0;
@@ -840,6 +843,7 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 		printf("\t%s\n", e_opcodes_strings[instr]);
 	}
 #endif
+	//printf("ins -> %s\n", e_opcodes_strings[instr]);
 
 	switch (instr) {
 		case OP_HALT: {

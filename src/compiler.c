@@ -1174,6 +1174,293 @@ static int parser_encapsulated_block(parser_t *pp) {
 	return 0;
 }
 
+static int parser_function_call(parser_t *pp, const char *ident, bool is_thread_call, bool can_declare)
+{
+	char id[128] = { 0 };
+	char id_path[128] = { 0 };
+
+accept_ident:
+
+	snprintf(id, sizeof(id), "%s", ident);
+	snprintf(id_path, sizeof(id), "%s", id);
+
+	bool is_file_ref = false;
+
+	while (1) {
+		if (!pp_accept(pp, TK_BACKSLASH))
+			break;
+		is_file_ref = true;
+		if (!pp_accept(pp, TK_IDENT))
+			return 1;
+		strncat(id_path, "/", sizeof(id) - strlen(id) - 1);
+		strncat(id_path, pp->string, sizeof(id) - strlen(id) - 1);
+		//maps\mp\_load::main();
+	}
+
+	if (is_file_ref) {
+		if (!pp_expect(pp, TK_COLON))
+			return 1;
+		if (!pp_accept(pp, TK_COLON))
+			return 1;
+		if (!pp_expect(pp, TK_IDENT))
+			return 1;
+		printf("%s\n", id_path);
+		snprintf(id, sizeof(id), "%s", pp->string);
+	}
+
+	var_t *v = NULL;
+	int index = 0; //if it's like level/self it won't be used anyway
+
+	bool is_obj = false;
+	bool is_array = false;
+	if (pp_accept(pp, TK_DOT) || pp_accept(pp, TK_LBRACK)) {
+		int obj_tk = pp->token;
+		//printf("TK_DOT ACCEPTED IS_OBJ=TRUE\n");
+		is_obj = true;
+		var_t *v;
+
+		if (parser_variable(pp, id, true, true, &v, OP_LOAD))
+			return 1;
+		if (v)
+			index = v->index;
+		if (obj_tk == TK_DOT) {
+
+			do {
+				if (!pp_expect(pp, TK_IDENT))
+					return 1;
+
+				scr_istring_t *istr = NULL;
+				index = parser_find_indexed_string(pp, pp->string, &istr);
+
+				if (istr == NULL)
+					index = parser_create_indexed_string(pp, pp->string);
+				if (!pp_accept(pp, TK_DOT))
+					break;
+
+				program_add_opcode(pp, OP_LOAD_FIELD);
+				program_add_short(pp, index);
+			} while (1);
+		}
+		else {
+			is_array = true;
+			do {
+				if (parser_expression(pp))
+					return 1;
+				if (pp_accept(pp, TK_RBRACK))
+					break;
+				program_add_opcode(pp, OP_LOAD_ARRAY_INDEX);
+				pp_expect(pp, TK_RBRACK);
+			} while (pp_accept(pp, TK_LBRACK));
+		}
+	}
+
+	if (pp_accept(pp, TK_ASSIGN)
+		||
+		pp_accept(pp, TK_PLUS_PLUS) ||
+		pp_accept(pp, TK_MINUS_MINUS) ||
+		pp_accept(pp, TK_PLUS_ASSIGN) ||
+		pp_accept(pp, TK_MINUS_ASSIGN) ||
+		pp_accept(pp, TK_DIVIDE_ASSIGN) ||
+		pp_accept(pp, TK_MULTIPLY_ASSIGN)
+		) {
+		int tk = pp->token;
+
+		if (!is_obj) {
+			v = parser_find_local_variable(pp, id);
+
+			if (!v) {
+				v = parser_create_local_variable(pp);
+				strncpy(v->name, id, sizeof(v->name) - 1);
+				v->name[sizeof(v->name) - 1] = '\0';
+			}
+			index = v->index;
+		}
+		if (tk != TK_PLUS_PLUS && tk != TK_MINUS_MINUS) {
+			if (parser_expression(pp))
+				return 1;
+		}
+		else {
+			/*
+			program_add_opcode(pp, OP_PUSH);
+			program_add_int(pp, 1);
+			*/ //unneeded cuz of the extra opcodes added
+		}
+
+		/* add the opcodes for the special assign types */
+		if (tk != TK_ASSIGN) { //should probably fix someday that also for arr/objs +=/-= etc works
+
+			if (parser_variable(pp, id, true, false, NULL, OP_LOAD))
+				return 1;
+
+			if (tk == TK_PLUS_ASSIGN)
+				program_add_opcode(pp, OP_ADD);
+			else if (tk == TK_MINUS_ASSIGN)
+				program_add_opcode(pp, OP_SUB);
+			else if (tk == TK_DIVIDE_ASSIGN)
+				program_add_opcode(pp, OP_DIV);
+			else if (tk == TK_MULTIPLY_ASSIGN)
+				program_add_opcode(pp, OP_MUL);
+			else if (tk == TK_PLUS_PLUS)
+				program_add_opcode(pp, OP_POST_INCREMENT);
+			else if (tk == TK_MINUS_MINUS)
+				program_add_opcode(pp, OP_POST_DECREMENT);
+		}
+
+		if (is_array)
+			program_add_opcode(pp, OP_STORE_ARRAY_INDEX);
+		else {
+			if (is_obj)
+				program_add_opcode(pp, OP_STORE_FIELD);
+			else
+				program_add_opcode(pp, OP_STORE);
+			program_add_short(pp, index);
+		}
+		pp_accept(pp, TK_SEMICOLON);
+	}
+	else if (pp_accept(pp, TK_LBRACK)) {
+		if (!pp_expect(pp, TK_STRING))
+			return 1;
+		pp_expect(pp, TK_RBRACK);
+
+		pp_expect(pp, TK_ASSIGN);
+		pp_expect(pp, TK_STRING);
+		pp_accept(pp, TK_SEMICOLON);
+	}
+	else if (pp_accept(pp, TK_LPAREN)) {
+		//definition :)
+
+		bool is_call = false;
+		int savepos = pp->curpos;
+		int at;
+
+		if (TK_EOF == parser_locate_token(pp, TK_RPAREN, &at, TK_LPAREN)) {
+			printf("could not find rparen!\n");
+			return 1;
+		}
+		else {
+
+			pp->curpos = at;
+			//temp to try to get the 
+			if (!pp_accept(pp, TK_LBRACE))
+				is_call = true;
+
+			pp->curpos = savepos; //reset to after the first lparen and catch the args
+
+			int numargs = 0;
+
+			if (pp_accept(pp, TK_RPAREN))
+				goto no_args_lol;
+			do {
+				++numargs;
+				if (is_call) {
+					if (parser_expression(pp)) //auto pushes
+						return 1;
+					continue;
+				}
+
+				if (!pp_accept(pp, TK_IDENT))
+					return 1;
+
+				var_t *v = parser_find_local_variable(pp, pp->string);
+				if (!v) {
+					v = parser_create_local_variable(pp);
+					strncpy(v->name, pp->string, sizeof(v->name) - 1);
+					v->name[sizeof(v->name) - 1] = '\0';
+				}
+			} while (pp_accept(pp, TK_COMMA));
+
+		no_args_lol:
+
+			pp->curpos = at;
+			//hehe
+			//printf("cur ch=%c\n", pp->scriptbuffer[pp->curpos]);
+
+			if (!pp_accept(pp, TK_LBRACE)) {
+				//func call
+				//printf("function call %s()\n", id);
+
+				bool found = false;
+				for (int i = 0; i <= pp->code_segment_size; i++) {
+					code_segment_t *seg = &pp->code_segments[i];
+					if (!strcmp(seg->id, id)) {
+						found = true;
+						if (is_thread_call) {
+							program_add_opcode(pp, OP_PUSH);
+							program_add_int(pp, numargs);
+
+							program_add_opcode(pp, OP_PUSH);
+							pp->current_segment->relocations[pp->current_segment->relocation_size++] = pp->program_counter;
+							program_add_int(pp, seg->original_loc);
+							program_add_opcode(pp, OP_CALL_THREAD);
+						}
+						else {
+							program_add_opcode(pp, OP_CALL);
+							pp->current_segment->relocations[pp->current_segment->relocation_size++] = pp->program_counter;
+							program_add_int(pp, seg->original_loc);
+							program_add_int(pp, numargs);
+							program_add_opcode(pp, OP_POP);
+						}
+						break;
+					}
+				}
+
+				if (!found) {
+					//just add it to the 'builtin' funcs and maybe that works? :D
+					//printf("function '%s' does not exist!\n", id);
+					program_add_opcode(pp, OP_CALL_BUILTIN);
+
+					scr_istring_t *istr = NULL;
+					int index = parser_find_indexed_string(pp, id, &istr);
+
+					if (istr == NULL)
+						index = parser_create_indexed_string(pp, id);
+					program_add_int(pp, index); //the index of string
+					program_add_int(pp, numargs);
+					program_add_opcode(pp, OP_POP);
+				}
+			}
+			else {
+
+				//printf("func definition %s\n", id);
+
+				if (TK_EOF == parser_locate_token(pp, TK_RBRACE, &at, TK_LBRACE)) {
+					printf("could not find rbrace :D\n");
+					return 1;
+				}
+				else {
+
+					//printf("orig_loc=%d,pc=%d\n", seg->original_loc, pc);
+					if (!strcmp(id, "main"))
+						pp->main_segment = pp->code_segment_size + 1;
+
+					pp->current_segment = &pp->code_segments[++pp->code_segment_size];
+					pp->current_segment->original_loc = pp->program_counter;
+					snprintf(pp->current_segment->id, sizeof(pp->current_segment->id), "%s", id);
+
+					int start = pp->curpos;
+					int end = at - 2;
+					int block = parser_block(pp, start, end);
+
+					if (block) {
+						printf("BLOCK=%d,curpos=%d,at=%d\n", block, start, end);
+						return block;
+					}
+
+					parser_clear_local_variables(pp);
+
+					program_add_opcode(pp, OP_PUSH_NULL);
+					program_add_opcode(pp, OP_RET);
+
+					pp->current_segment->size = pp->program_counter - pp->current_segment->original_loc;
+				}
+			}
+			pp_accept(pp, TK_SEMICOLON);
+		}
+	}
+
+	return 0;
+}
+
 static int parser_statement(parser_t *pp) {
 	bool is_thread_call = false;
 	int before = pp->curpos;
@@ -1385,285 +1672,8 @@ static int parser_statement(parser_t *pp) {
 		goto accept_ident;
 	}
 	else if (pp_accept(pp, TK_IDENT)) {
-
-		char id[128] = { 0 };
-		char id_path[128] = { 0 };
-	
-	accept_ident:
-	
-		snprintf(id,sizeof(id),"%s",pp->string);
-		snprintf(id_path,sizeof(id),"%s",id);
-
-		bool is_file_ref = false;
-
-		while (1) {
-			if (!pp_accept(pp, TK_BACKSLASH))
-				break;
-			is_file_ref = true;
-			if (!pp_accept(pp, TK_IDENT))
-				return 1;
-			strncat(id_path, "/", sizeof(id) - strlen(id) - 1);
-			strncat(id_path, pp->string, sizeof(id) - strlen(id) - 1);
-			//maps\mp\_load::main();
-		}
-
-		if (is_file_ref) {
-			if (!pp_expect(pp, TK_COLON))
-				return 1;
-			if (!pp_accept(pp, TK_COLON))
-				return 1;
-			if (!pp_expect(pp, TK_IDENT))
-				return 1;
-			printf("%s\n", id_path);
-			snprintf(id,sizeof(id),"%s",pp->string);
-		}
-
-		var_t *v = NULL;
-		int index=0; //if it's like level/self it won't be used anyway
-
-		bool is_obj = false;
-		bool is_array = false;
-		if (pp_accept(pp, TK_DOT) || pp_accept(pp,TK_LBRACK)) {
-			int obj_tk = pp->token;
-			//printf("TK_DOT ACCEPTED IS_OBJ=TRUE\n");
-			is_obj = true;
-			var_t *v;
-
-			if (parser_variable(pp, id, true, true, &v, OP_LOAD))
-				return 1;
-			if(v)
-			index = v->index;
-			if (obj_tk==TK_DOT) {
-
-				do {
-					if (!pp_expect(pp, TK_IDENT))
-						return 1;
-
-					scr_istring_t *istr = NULL;
-					index = parser_find_indexed_string(pp, pp->string, &istr);
-
-					if (istr == NULL)
-						index = parser_create_indexed_string(pp, pp->string);
-					if (!pp_accept(pp, TK_DOT))
-						break;
-
-					program_add_opcode(pp, OP_LOAD_FIELD);
-					program_add_short(pp, index);
-				} while (1);
-			} else {
-				is_array = true;
-				do {
-					if (parser_expression(pp))
-						return 1;
-					if (pp_accept(pp, TK_RBRACK))
-						break;
-					program_add_opcode(pp, OP_LOAD_ARRAY_INDEX);
-					pp_expect(pp, TK_RBRACK);
-				} while (pp_accept(pp, TK_LBRACK));
-			}
-		}
-
-		if (pp_accept(pp, TK_ASSIGN)
-			||
-			pp_accept(pp,TK_PLUS_PLUS) ||
-			pp_accept(pp,TK_MINUS_MINUS) ||
-			pp_accept(pp, TK_PLUS_ASSIGN) ||
-			pp_accept(pp, TK_MINUS_ASSIGN) ||
-			pp_accept(pp, TK_DIVIDE_ASSIGN) ||
-			pp_accept(pp, TK_MULTIPLY_ASSIGN)
-			) {
-			int tk = pp->token;
-
-			if (!is_obj) {
-				v = parser_find_local_variable(pp, id);
-
-				if (!v) {
-					v = parser_create_local_variable(pp);
-					strncpy(v->name, id, sizeof(v->name) - 1);
-					v->name[sizeof(v->name) - 1] = '\0';
-				}
-				index = v->index;
-			}
-			if (tk != TK_PLUS_PLUS&&tk != TK_MINUS_MINUS) {
-				if (parser_expression(pp))
-					goto unexpected_tkn;
-			}
-			else {
-				/*
-				program_add_opcode(pp, OP_PUSH);
-				program_add_int(pp, 1);
-				*/ //unneeded cuz of the extra opcodes added
-			}
-
-			/* add the opcodes for the special assign types */
-			if (tk != TK_ASSIGN) { //should probably fix someday that also for arr/objs +=/-= etc works
-
-				if (parser_variable(pp, id, true, false, NULL, OP_LOAD))
-					return 1;
-
-				if (tk == TK_PLUS_ASSIGN)
-					program_add_opcode(pp, OP_ADD);
-				else if (tk == TK_MINUS_ASSIGN)
-					program_add_opcode(pp, OP_SUB);
-				else if (tk == TK_DIVIDE_ASSIGN)
-					program_add_opcode(pp, OP_DIV);
-				else if (tk == TK_MULTIPLY_ASSIGN)
-					program_add_opcode(pp, OP_MUL);
-				else if (tk == TK_PLUS_PLUS)
-					program_add_opcode(pp, OP_POST_INCREMENT);
-				else if (tk == TK_MINUS_MINUS)
-					program_add_opcode(pp, OP_POST_DECREMENT);
-			}
-
-			if (is_array)
-				program_add_opcode(pp, OP_STORE_ARRAY_INDEX);
-			else {
-				if (is_obj)
-					program_add_opcode(pp, OP_STORE_FIELD);
-				else
-					program_add_opcode(pp, OP_STORE);
-				program_add_short(pp, index);
-			}
-			pp_accept(pp, TK_SEMICOLON);
-		}
-		else if (pp_accept(pp, TK_LBRACK)) {
-			if (!pp_expect(pp, TK_STRING))
-				return 1;
-			pp_expect(pp, TK_RBRACK);
-
-			pp_expect(pp, TK_ASSIGN);
-			pp_expect(pp, TK_STRING);
-			pp_accept(pp, TK_SEMICOLON);
-		} else if (pp_accept(pp, TK_LPAREN)) {
-			//definition :)
-
-			bool is_call = false;
-			int savepos = pp->curpos;
-			int at;
-
-			if (TK_EOF == parser_locate_token(pp, TK_RPAREN, &at, TK_LPAREN)) {
-				printf("could not find rparen!\n");
-				goto unexpected_tkn;
-			}
-			else {
-
-				pp->curpos = at;
-				//temp to try to get the 
-				if (!pp_accept(pp, TK_LBRACE))
-					is_call = true;
-
-				pp->curpos = savepos; //reset to after the first lparen and catch the args
-
-				int numargs = 0;
-
-				if (pp_accept(pp, TK_RPAREN))
-					goto no_args_lol;
-				do {
-					++numargs;
-					if (is_call) {
-						if (parser_expression(pp)) //auto pushes
-							return 1;
-						continue;
-					}
-
-					if (!pp_accept(pp, TK_IDENT))
-						return 1;
-
-					var_t *v = parser_find_local_variable(pp, pp->string);
-					if (!v) {
-						v = parser_create_local_variable(pp);
-						strncpy(v->name, pp->string, sizeof(v->name) - 1);
-						v->name[sizeof(v->name) - 1] = '\0';
-					}
-				} while (pp_accept(pp, TK_COMMA));
-
-			no_args_lol:
-
-				pp->curpos = at;
-				//hehe
-				//printf("cur ch=%c\n", pp->scriptbuffer[pp->curpos]);
-
-				if (!pp_accept(pp, TK_LBRACE)) {
-					//func call
-					//printf("function call %s()\n", id);
-
-					bool found = false;
-					for (int i = 0; i <= pp->code_segment_size; i++) {
-						code_segment_t *seg = &pp->code_segments[i];
-						if (!strcmp(seg->id, id)) {
-							found = true;
-							if(is_thread_call) {
-								program_add_opcode(pp, OP_PUSH);
-								program_add_int(pp, numargs);
-
-								program_add_opcode(pp, OP_PUSH);
-								pp->current_segment->relocations[pp->current_segment->relocation_size++] = pp->program_counter;
-								program_add_int(pp, seg->original_loc);
-								program_add_opcode(pp, OP_CALL_THREAD);
-							} else {
-								program_add_opcode(pp, OP_CALL);
-								pp->current_segment->relocations[pp->current_segment->relocation_size++] = pp->program_counter;
-								program_add_int(pp, seg->original_loc);
-								program_add_int(pp, numargs);
-								program_add_opcode(pp, OP_POP);
-							}
-							break;
-						}
-					}
-
-					if (!found) {
-						//just add it to the 'builtin' funcs and maybe that works? :D
-						//printf("function '%s' does not exist!\n", id);
-						program_add_opcode(pp, OP_CALL_BUILTIN);
-
-						scr_istring_t *istr=NULL;
-						int index = parser_find_indexed_string(pp, id, &istr);
-
-						if(istr==NULL)
-							index = parser_create_indexed_string(pp, id);
-						program_add_int(pp, index); //the index of string
-						program_add_int(pp, numargs);
-						program_add_opcode(pp, OP_POP);
-					}
-				}
-				else {
-
-					//printf("func definition %s\n", id);
-
-					if (TK_EOF == parser_locate_token(pp, TK_RBRACE, &at, TK_LBRACE)) {
-						printf("could not find rbrace :D\n");
-						goto unexpected_tkn;
-					}
-					else {
-
-						//printf("orig_loc=%d,pc=%d\n", seg->original_loc, pc);
-						if (!strcmp(id, "main"))
-							pp->main_segment = pp->code_segment_size + 1;
-
-						pp->current_segment = &pp->code_segments[++pp->code_segment_size];
-						pp->current_segment->original_loc = pp->program_counter;
-						snprintf(pp->current_segment->id, sizeof(pp->current_segment->id), "%s", id);
-
-						int start = pp->curpos;
-						int end = at - 2;
-						int block = parser_block(pp, start, end);
-
-						if (block) {
-							printf("BLOCK=%d,curpos=%d,at=%d\n", block, start, end);
-							return block;
-						}
-
-						parser_clear_local_variables(pp);
-
-						program_add_opcode(pp, OP_PUSH_NULL);
-						program_add_opcode(pp, OP_RET);
-
-						pp->current_segment->size = pp->program_counter - pp->current_segment->original_loc;
-					}
-				}
-				pp_accept(pp, TK_SEMICOLON);
-			}
-		}
+		accept_ident:
+		parser_function_call(pp, pp->string, is_thread_call, false); //we shouldn't be allowed to make functions here right
 	} else if(pp_accept(pp,TK_RETURN)) {
 		if (!pp_accept(pp, TK_SEMICOLON)) {
 			if (parser_expression(pp))
