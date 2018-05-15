@@ -1,0 +1,52 @@
+#include <test.h>
+
+typedef struct
+{
+	unsigned short sin_family;
+	unsigned short sin_port;
+	
+	unsigned int sin_addr; //long on x64
+    char sin_zero[8];
+} sockaddr_in;
+
+#define AF_INET 2
+#define SOCK_DGRAM 2
+
+typedef struct {
+        short                    wVersion;
+        short                    wHighVersion;
+        char                    szDescription[257];
+        char                    szSystemStatus[129];
+        unsigned short          iMaxSockets;
+        unsigned short          iMaxUdpDg;
+        char*              lpVendorInfo;
+} WSADATA;
+
+main()
+{
+	server_name="localhost";
+	server_port=25010;
+	
+	sa = new sockaddr_in;
+	std();
+	
+	memset(sa,0,sa.size);
+	
+	ws2_32();
+	
+	wsadata = new WSADATA;
+	
+	ws = WSAStartup(2,wsadata);
+	
+	sa.sin_family=AF_INET;
+	addr = (int)0;
+	inet_pton(AF_INET,server_name,&addr);
+	
+	sa.sin_addr=addr;
+	sa.sin_port=htons(server_port);
+	
+	sock = socket(AF_INET, SOCK_DGRAM, 17);
+	
+	printf("sock = %\n", sock);
+	printf("err = %\n",WSAGetLastError());
+}

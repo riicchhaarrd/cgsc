@@ -57,6 +57,14 @@ struct vm_thread_s {
 	//char string[512]; //used for getting string value types n stuff
 };
 
+typedef intptr_t vm_function_t;
+
+typedef struct
+{
+	void*(*cfunc)();
+	vm_function_t callback;
+} vm_ffi_callback_t;
+
 struct vm_s {
 	char *program;
 	int program_size;
@@ -72,6 +80,7 @@ struct vm_s {
 
 	varval_t *level;
 	varval_t *self;
+	vector ffi_callbacks;
 
 	vector vars;
 

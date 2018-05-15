@@ -36,7 +36,7 @@
     <ClCompile Include="..\src\common.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\x86.c">
+    <ClCompile Include="..\src\asm.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

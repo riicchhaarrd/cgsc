@@ -905,16 +905,30 @@ static int parser_factor(parser_t *pp) {
 		if (!is_cast) {
 			int savepos = pp->curpos;
 			if (pp_accept(pp, TK_IDENT)) {
-				for (int i = 0; e_var_types_strings[i]; ++i) {
-					if (!stricmp(pp->string, e_var_types_strings[i])) {
-						pp_expect(pp, TK_RPAREN);
-						if (parser_expression(pp))
-							return 1;
-						program_add_opcode(pp, OP_CAST);
-						program_add_short(pp, i);
-						is_cast = true;
-						break;
+				int s_ind;
+				cstruct_t *cs = parser_get_struct(pp, pp->string, &s_ind);
+				if (cs == NULL)
+				{
+					for (int i = 0; e_var_types_strings[i]; ++i) {
+						if (!stricmp(pp->string, e_var_types_strings[i])) {
+							pp_expect(pp, TK_RPAREN);
+							if (parser_expression(pp))
+								return 1;
+							program_add_opcode(pp, OP_CAST);
+							program_add_short(pp, i);
+							is_cast = true;
+							break;
+						}
 					}
+				}
+				else
+				{
+					pp_expect(pp, TK_RPAREN);
+					if (parser_expression(pp))
+						return 1;
+					program_add_opcode(pp, OP_CAST_STRUCT);
+					program_add_short(pp, s_ind);
+					is_cast = true;
 				}
 				if (!is_cast)
 					pp->curpos = savepos;

@@ -76,11 +76,16 @@ typedef enum
 	CTYPE_DOUBLE,
 
 	CTYPE_UNSIGNED,
-	CTYPE_POINTER
+	CTYPE_POINTER,
+	CTYPE_ARRAY = 16 //shouldnt matter too much in terms of checking its just here to check in the vm to also return back address to the offset
 } ctype_t;
 
-CSTRUCTPARSER_FUNCTION int ctype_get_size(int t)
+#define CTYPE_IS_ARRAY(x) ( ( (x) & CTYPE_ARRAY ) == CTYPE_ARRAY )
+
+CSTRUCTPARSER_FUNCTION int ctype_get_size(int rt)
 {
+	int t = rt & ~CTYPE_ARRAY;
+	//can't guess the array size from type alone we'll muliply base type with the array size later
 	switch (t)
 	{
 	case CTYPE_NONE:
@@ -445,6 +450,8 @@ CSTRUCTPARSER_FUNCTION int cstructparser(const char *string, dynarray *structs, 
 							//printf("varName = %s\n", varName);
 
 							int ctype = get_ctype_for_keywords(idents, n_ident);
+							if (arraysize != 1)
+								ctype |= CTYPE_ARRAY;
 							int sz = ctype_get_size(ctype) * arraysize;
 							//printf("-> %s %s : %d %d\n", ctypestrings[ctype], varName, memberoffset, sz);
 							snprintf(field.name, sizeof(field.name), "%s", varName);
@@ -471,6 +478,8 @@ CSTRUCTPARSER_FUNCTION int cstructparser(const char *string, dynarray *structs, 
 					}
 					dynstring variableName = idents[n_ident - 1];
 					int ctype = get_ctype_for_keywords(idents, n_ident - 1);
+					if (arraysize != 1)
+						ctype |= CTYPE_ARRAY;
 					int sz = ctype_get_size(ctype) * arraysize;
 					//printf("%s %s : %d %d\n", ctypestrings[ctype], variableName, memberoffset, sz);
 					snprintf(field.name, sizeof(field.name), "%s", variableName);

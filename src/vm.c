@@ -128,6 +128,7 @@ varval_t *vv_cast(vm_t *vm, varval_t *vv, int desired_type)
 			return NULL;
 		}
 	} break;
+
 	case VAR_TYPE_STRING:
 		if(vv->flags & VF_FFI) {
 			c->as.string = NULL;
@@ -164,37 +165,54 @@ cstructfield_t *vm_get_struct_field(vm_t *vm, cstruct_t *cs, const char *s)
 	return NULL;
 }
 
+varval_t *se_vv_create_with_ffi_flags(vm_t *vm, int type)
+{
+	varval_t *vv = se_vv_create(vm, type);
+	vv->flags |= VF_FFI;
+	return vv;
+}
+
 varval_t *vm_get_struct_field_value(vm_t *vm, cstruct_t *cs, cstructfield_t *field, vt_buffer_t *vtb)
 {
 	//printf("field %s, cs = %s, type = %s\n", field->name, cs->name, ctypestrings[field->type]);
 	varval_t *vv = 0;
 	void *p = &vtb->data[field->offset];
 
+	if (CTYPE_IS_ARRAY(field->type))
+	{
+		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_LONG);
+		vv->as.ptr = p;
+		return vv;
+	}
+
 	switch (field->type)
 	{
 	case CTYPE_CHAR:
-		vv = se_vv_create(vm, VAR_TYPE_CHAR);
+		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_CHAR);
 		vv->as.character = *(char*)p;
 		return vv;
 	case CTYPE_SHORT:
-		vv = se_vv_create(vm, VAR_TYPE_SHORT);
+		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_SHORT);
 		vv->as.shortint = *(short*)p;
 		return vv;
 	case CTYPE_INT:
-		vv = se_vv_create(vm, VAR_TYPE_INT);
+		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_INT);
 		vv->as.integer = *(int*)p;
 		return vv;
 	case CTYPE_LONG:
-	case CTYPE_POINTER:
-		vv = se_vv_create(vm, VAR_TYPE_LONG);
+		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_LONG);
 		vv->as.longint = *(vm_long_t*)p;
 		return vv;
+	case CTYPE_POINTER:
+		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_LONG); //TODO fix this perhaps but should be fine for the next X years unless sizeof(void*) changes, besides i need to fix ffi x64 first anyways
+		vv->as.ptr = *(void**)p; //key difference between array and ptr
+		return vv;
 	case CTYPE_FLOAT:
-		vv = se_vv_create(vm, VAR_TYPE_FLOAT);
+		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_FLOAT);
 		vv->as.flt = *(float*)p;
 		return vv;
 	case CTYPE_DOUBLE:
-		vv = se_vv_create(vm, VAR_TYPE_DOUBLE);
+		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_DOUBLE);
 		vv->as.dbl = *(double*)p;
 		return vv;
 	}
@@ -203,6 +221,11 @@ varval_t *vm_get_struct_field_value(vm_t *vm, cstruct_t *cs, cstructfield_t *fie
 
 int vm_set_struct_field_value(vm_t *vm, cstruct_t *cs, cstructfield_t *field, vt_buffer_t *vtb, varval_t *vv)
 {
+	if (CTYPE_IS_ARRAY(field->type))
+	{
+		printf("expression must be a modifiable lvalue\n");
+		return 0;
+	}
 	switch (field->type)
 	{
 	case CTYPE_CHAR: {
@@ -373,6 +396,11 @@ const char *se_vv_to_string(vm_t *vm, varval_t *vv) {
 	case VAR_TYPE_NULL:
 		return "[null]";
 	case VAR_TYPE_OBJECT:
+		switch (vv->as.obj->type)
+		{
+		case VT_OBJECT_BUFFER:
+			return "[managed buffer]";
+		}
 		return "[object]";
 	case VAR_TYPE_ARRAY:
 		return "[array]";
@@ -810,10 +838,10 @@ varval_t *vm_math_op_handler(vm_t *vm, int math_op, varval_t *a, varval_t *b, in
 	return NULL;
 }
 
-void vt_buffer_deconstructor(vm_t *vm, char *p)
+void vt_buffer_deconstructor(vm_t *vm, vt_buffer_t *vtb)
 {
-	vt_buffer_t *vtb = DYN_TYPE_HDR(vt_buffer_t, p);
-	free(vtb);
+	if(!vtb->managed)
+		free(vtb);
 }
 
 //NOTE
@@ -906,9 +934,10 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 				varval_t *vv = se_createobject(vm, VT_OBJECT_BUFFER, NULL, NULL, (void*)vt_buffer_deconstructor); //todo add the file deconstructor? :D
 				vt_buffer_t *vtb = (vt_buffer_t*)malloc(sizeof(vt_buffer_t) + sz);
 				vtb->size = sz;
+				vtb->data = ((char*)vtb) + sizeof(vt_buffer_t);
 				//printf("spawning %s\n", cs->name);
 				vtb->type = s_ind;
-				vv->as.obj->obj = (char*)vtb->data;
+				vv->as.obj->obj = vtb;
 				stack_push_vv(vm, vv);
 			}
 		} break;
@@ -972,7 +1001,7 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 					switch (vv_arr->as.obj->type)
 					{
 					case VT_OBJECT_BUFFER: {
-						vt_buffer_t *vtb = DYN_TYPE_HDR(vt_buffer_t, ((char*)vv_arr->as.obj->obj));
+						vt_buffer_t *vtb = (vt_buffer_t*)vv_arr->as.obj->obj;// DYN_TYPE_HDR(vt_buffer_t, ((char*)vv_arr->as.obj->obj));
 						se_addint(vm, vtb->size);
 					} break;
 					}
@@ -1071,7 +1100,7 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 				} else {
 					if (vv_obj->as.obj->type == VT_OBJECT_BUFFER)
 					{
-						vt_buffer_t *vtb = DYN_TYPE_HDR(vt_buffer_t, (char*)vv_obj->as.obj->obj);
+						vt_buffer_t *vtb = (vt_buffer_t*)vv_obj->as.obj->obj;// DYN_TYPE_HDR(vt_buffer_t, (char*)vv_obj->as.obj->obj);
 						cstruct_t *cs = vm_get_struct(vm, vtb->type);
 						if (cs)
 						{
@@ -1116,7 +1145,7 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 				printf("str_index out of bounds!!\n");
 			if (vv_obj->as.obj->type == VT_OBJECT_BUFFER)
 			{
-				vt_buffer_t *vtb = DYN_TYPE_HDR(vt_buffer_t, (char*)vv_obj->as.obj->obj);
+				vt_buffer_t *vtb = (vt_buffer_t*)vv_obj->as.obj->obj;// DYN_TYPE_HDR(vt_buffer_t, (char*)vv_obj->as.obj->obj);
 				cstruct_t *cs = vm_get_struct(vm, vtb->type);
 				if (cs)
 				{
@@ -1458,6 +1487,31 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 			stack_push_vv(vm, nv);
 #endif
 			se_vv_free(vm, ptr);
+		} break;
+
+		case OP_CAST_STRUCT: {
+			varval_t *vv = (varval_t*)stack_pop(vm);
+			int s_ind = read_short(vm);
+
+			cstruct_t *cs = vm_get_struct(vm, s_ind);
+			if (cs == NULL)
+			{
+				se_addnull(vm);
+				//failed to cast
+			}
+			else {
+
+				varval_t *nvv = se_createobject(vm, VT_OBJECT_BUFFER, NULL, NULL, (void*)vt_buffer_deconstructor); //todo add the file deconstructor? :D
+				vt_buffer_t *vtb = (vt_buffer_t*)malloc(sizeof(vt_buffer_t));
+				vtb->size = cs->size;
+				vtb->data = vv->as.ptr; //has to be a pointer that probably was returned by some c ffi func
+				//printf("spawning %s\n", cs->name);
+				vtb->type = s_ind;
+				nvv->as.obj->obj = vtb;
+				stack_push_vv(vm, nvv);
+			}
+			//printf("desired cast type = %s, current = %s\n", e_var_types_strings[cast_type], e_var_types_strings[VV_TYPE(vv)]);
+			se_vv_free(vm, vv);
 		} break;
 
 		case OP_CAST: {
@@ -2045,7 +2099,7 @@ void *vm_mem_alloc_r(vm_t *vm, size_t sz, const char *_file, int _line) {
 void *vm_mem_alloc_r(vm_t *vm, size_t sz) {
 #endif
 	void *p = malloc(sz);
-	vector_add(&vm->__mem_allocations, p);
+	//vector_add(&vm->__mem_allocations, p);
 	return p;
 }
 
@@ -2056,7 +2110,7 @@ void vm_mem_free_r(vm_t *vm, void *block) {
 #endif
 	if (!block)
 		return;
-
+#if 0
 	int loc = vector_locate(&vm->__mem_allocations, block);
 
 	if (loc != -1)
@@ -2066,6 +2120,7 @@ void vm_mem_free_r(vm_t *vm, void *block) {
 		printf("could not find block in allocs! %s;%d", _file, _line);
 #endif
 	}
+#endif
 	free(block);
 }
 
@@ -2105,6 +2160,8 @@ vm_t *vm_create(const char *program, int programsize) {
 	vm->varcachesize = 0;
 
 	array_init(&vm->structs, cstruct_t);
+
+	vector_init(&vm->ffi_callbacks);
 
 	vector_init(&vm->__mem_allocations);
 	vector_init(&vm->vars);
@@ -2280,6 +2337,12 @@ void vm_free(vm_t *vm) {
 	}
 #endif
 
+	for (int i = 0; i < vector_count(&vm->ffi_callbacks); ++i)
+	{
+		vm_ffi_callback_t *cb = (vm_ffi_callback_t*)vector_get(&vm->ffi_callbacks, i);
+		vm_mem_free(vm, cb);
+	}
+	vector_free(&vm->ffi_callbacks);
 	vector_free(&vm->vars);
 
 	for (int i = 0; i < MAX_SCRIPT_THREADS; i++) {

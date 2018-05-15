@@ -93,6 +93,7 @@ typedef enum {
 	VT_OBJECT_GENERIC,
 	VT_OBJECT_FILE,
 	VT_OBJECT_BUFFER,
+	VT_OBJECT_STRUCT,
 	VT_OBJECT_LEVEL,
 	VT_OBJECT_SELF,
 	VT_OBJECT_CUSTOM
@@ -101,11 +102,12 @@ typedef enum {
 
 typedef struct {
 	int type;
+	bool managed;
 	size_t size;
-	char data[];
+	char* data;
 } vt_buffer_t;
 
-#define DYN_TYPE_HDR(type, s) (type *)( ( s ) - sizeof(type) )
+//#define DYN_TYPE_HDR(type, s) (type *)( ( s ) - sizeof(type) )
 
 typedef int(*vt_obj_getter_prototype)(vm_t*, void*);
 typedef void(*vt_obj_setter_prototype)(vm_t*, void*);

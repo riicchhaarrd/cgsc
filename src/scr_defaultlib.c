@@ -689,6 +689,15 @@ int vm_do_jit(vm_t *vm, HMODULE lib, DWORD addr, varval_t **argv, int argc)
 
 int vm_do_jit(vm_t *vm, const char *libname, const char *funcname)
 {
+#if 0
+	if (!strcmp(funcname, "socket"))
+	{
+		int sock = socket(2, 2, 17);
+		printf("sock=%d\n", sock);
+		__asm int 3
+	}
+#endif
+
 	int status = FFI_GENERIC_ERROR;
 
 #ifndef _WIN32
@@ -764,8 +773,10 @@ int vm_do_jit(vm_t *vm, const char *libname, const char *funcname)
 					switch (arg->as.obj->type)
 					{
 					case VT_OBJECT_BUFFER:
-						push_imm(&jit, arg->as.obj->obj);
-						break;
+					{
+						vt_buffer_t *vtb = (vt_buffer_t*)arg->as.obj->obj;
+						push_imm(&jit, vtb->data);
+					} break;
 					default: goto _ffi_end;
 					}
 				}
