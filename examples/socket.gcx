@@ -23,10 +23,15 @@ typedef struct {
         char*              lpVendorInfo;
 } WSADATA;
 
+typedef struct
+{
+	char msg[1024];
+} received_t;
+
 main()
 {
-	server_name="localhost";
-	server_port=25010;
+	server_name="185.34.104.231";
+	server_port=20710;
 	
 	sa = new sockaddr_in;
 	std();
@@ -50,4 +55,18 @@ main()
 	
 	printf("sock = %\n", sock);
 	printf("err = %\n",WSAGetLastError());
+	
+	buf = "\xff\xff\xff\xffgetservers 118 full empty";
+	std();
+	bufsz = $strlen(buf) + 1;
+	ws2_32();
+	len = sendto(sock, buf, bufsz, 0, sa, sa.size);
+	
+	got = new received_t;
+	
+	recvfrom(sock, got->msg, 1024, 0, 0, 0);
+	
+	printf("got = %\n", (string)got->msg);
+	
+	close(sock);
 }
