@@ -689,15 +689,6 @@ int vm_do_jit(vm_t *vm, HMODULE lib, DWORD addr, varval_t **argv, int argc)
 
 int vm_do_jit(vm_t *vm, const char *libname, const char *funcname)
 {
-#if 0
-	if (!strcmp(funcname, "socket"))
-	{
-		int sock = socket(2, 2, 17);
-		printf("sock=%d\n", sock);
-		__asm int 3
-	}
-#endif
-
 	int status = FFI_GENERIC_ERROR;
 
 #ifndef _WIN32
@@ -746,7 +737,7 @@ int vm_do_jit(vm_t *vm, const char *libname, const char *funcname)
 	push(&jit, REG_EBP);
 	mov(&jit, REG_EBP, REG_ESP);
 #endif
-	sub_imm(&jit, REG_ESP, 0x12);
+	//sub_imm(&jit, REG_ESP, 0x12);
 
 	//jit[j++] = 0xcc; //int 3
 	int numargs = se_argc(vm);
@@ -787,7 +778,7 @@ int vm_do_jit(vm_t *vm, const char *libname, const char *funcname)
 	}
 #if 1
 	//special case of call API 
-	//jit = emit(0x36, jit);
+	//emit(&jit, 0x36);
 	//segment override mhm
 	emit(&jit, 0xff);
 	emit(&jit, 0x15);
@@ -799,7 +790,7 @@ int vm_do_jit(vm_t *vm, const char *libname, const char *funcname)
 #endif
 #endif
 
-	//jit = xor(EAX, EAX, jit);
+	//xor(&jit, EAX, EAX);
 #if 1
 	emit(&jit, 0xc9); //leave
 #endif
