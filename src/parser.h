@@ -80,11 +80,15 @@ typedef struct {
 	int numfunctions;
 	int not;
 	void *userdata;
-
 	int last_member_token, last_member_index;
-
+#define SCOPE_STACK_SIZE (128)
+	int scopestack[SCOPE_STACK_SIZE];
+	int ssp; //scope stack pointer
 	dynarray structs;
 } parser_t;
+
+#define SCOPE_POP(pp) pp->scopestack[--pp->ssp]
+#define SCOPE_PUSH(pp, v) pp->scopestack[pp->ssp++] = v
 
 static var_t *parser_find_local_variable(parser_t*, const char*);
 static int parser_block(parser_t*,int,int);

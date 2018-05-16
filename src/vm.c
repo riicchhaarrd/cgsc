@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <stdbool.h>
+#include "common.h"
 
 #include "virtual_machine.h"
 
@@ -25,6 +26,15 @@
 #include "dynstring.h"
 #include "cstructparser.h"
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define WIN32_EXTRA_LEAN
+#include <Windows.h>
+#else
+
+#include <dlfcn.h>
+#endif
+
 int vv_integer_internal_size(varval_t *vv)
 {
 	if (VV_TYPE(vv) == VAR_TYPE_NULL)
@@ -45,6 +55,14 @@ int vv_integer_internal_size(varval_t *vv)
 	case VAR_TYPE_DOUBLE: return 8;
 	case VAR_TYPE_FLOAT: return 4;
 	case VAR_TYPE_VECTOR: return sizeof(vv->as.vec);
+	case VAR_TYPE_OBJECT:
+	{
+		if (vv->as.obj->type == VT_OBJECT_BUFFER)
+		{
+			vt_buffer_t *vtb = (vt_buffer_t*)vv->as.obj->obj;
+			return vtb->size;
+		}
+	} break;
 	}
 	return 0;
 }
@@ -265,8 +283,8 @@ int vm_set_struct_field_value(vm_t *vm, cstruct_t *cs, cstructfield_t *field, vt
 	return 1;
 }
 
-#define Q_MIN(a,b) (a) > (b) ? (b) : (a)
-#define Q_MAX(a,b) (a) > (b) ? (a) : (b)
+#define Q_MIN(a,b) ((a) > (b) ? (b) : (a))
+#define Q_MAX(a,b) ((a) > (b) ? (a) : (b))
 
 int vv_icmp(vm_t *vm, varval_t *a, varval_t *b)
 {
@@ -275,7 +293,8 @@ int vv_icmp(vm_t *vm, varval_t *a, varval_t *b)
 		int sa = vv_integer_internal_size(a);
 		int sb = vv_integer_internal_size(b);
 		int smallest = Q_MIN(sa, sb);
-		return memcmp(&a->as, &b->as, smallest);
+		//printf("smallest = %d\n", smallest);
+		return !memcmp(&a->as, &b->as, smallest);
 	}
 	else {
 		vm_scalar_t ca = vv_cast_double(vm, a);
@@ -840,7 +859,7 @@ varval_t *vm_math_op_handler(vm_t *vm, int math_op, varval_t *a, varval_t *b, in
 
 void vt_buffer_deconstructor(vm_t *vm, vt_buffer_t *vtb)
 {
-	if(!vtb->managed)
+	//if(!vtb->managed)
 		free(vtb);
 }
 
@@ -1325,7 +1344,7 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 				if (!(fb != fa)) 
 					vm_registers[REG_COND] = 1;
 #endif
-				if (!vv_icmp(vm, a, b))
+				if (vv_icmp(vm, a, b))
 					vm_registers[REG_COND] = 1;
 			} 
 			se_vv_free(vm, b); 
@@ -1660,14 +1679,18 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 			varval_t *retval = NULL;
 			if (is_ffi_call)
 			{
-				if (vm->thrunner->ffi_libname[0] == '\0')
-					sprintf(vm->thrunner->ffi_libname, "msvcrt.dll");
-				int vm_do_jit(vm_t *vm, const char *libname, const char *funcname);
-				if (vm_do_jit(vm, vm->thrunner->ffi_libname, lookupname) != 0)
+				//if (vm->thrunner->ffi_libname[0] == '\0')
+					//sprintf(vm->thrunner->ffi_libname, "msvcrt.dll");
+				vm_ffi_lib_t *which = NULL;
+				vm_ffi_lib_func_t *libfunc = vm_library_function_get_any(vm, lookupname, &which);
+				//if this is too slow, could just make a array lookup table with indices of strings of the functions customized istring of some sorts and just
+				//directly access the array then but for now let's do this
+				int vm_do_jit(vm_t *vm, vm_ffi_lib_func_t*);
+				if (libfunc == NULL || vm_do_jit(vm, libfunc) != 0)
 				{
 					printf("ffi function '%s' not found!\n", lookupname);
-					//return E_VM_RET_ERROR;
 					retval = NULL;
+					return E_VM_RET_ERROR;
 				} else
 					retval = (varval_t*)stack_pop(vm);
 			}
@@ -1935,7 +1958,9 @@ int vm_exec_ent_thread_pointer(vm_t *vm, varval_t *new_self, int fp, int numargs
 }
 
 int vm_exec_thread(vm_t *vm, const char *func_name, int numargs) {
-	
+	if (!vm)
+		return 1;
+
 	vm_function_info_t *fi = NULL;
 	int funcinfocount = vector_count(&vm->functioninfo);
 	for (int i = funcinfocount; i--;) {
@@ -1976,6 +2001,50 @@ TSR_READ_FUNCTION(16, uint16_t)
 TSR_READ_FUNCTION(32, uint32_t)
 TSR_READ_FUNCTION(8, uint8_t)
 
+vm_ffi_lib_t *vm_library_get(vm_t *vm, const char *n)
+{
+	vm_hash_t h = hash_string(n);
+	for (int i = vm->libs.size; i--;)
+	{
+		array_get(&vm->libs, vm_ffi_lib_t, lib, i);
+		if (lib->hash == h)
+			return lib;
+	}
+	return NULL;
+}
+
+vm_ffi_lib_func_t *vm_library_function_get_any(vm_t *vm, const char *n, vm_ffi_lib_t **which_lib)
+{
+	vm_hash_t h = hash_string(n);
+	for (int k = vm->libs.size; k--;)
+	{
+		array_get(&vm->libs, vm_ffi_lib_t, lib, k);
+		for (int i = lib->functions.size; i--;)
+		{
+			array_get(&lib->functions, vm_ffi_lib_func_t, f, i);
+			if (f->hash == h)
+			{
+				if (which_lib != NULL)
+					*which_lib = lib;
+				return f;
+			}
+		}
+	}
+	return NULL;
+}
+
+vm_ffi_lib_func_t *vm_library_function_get(vm_t *vm, vm_ffi_lib_t *lib, const char *n)
+{
+	vm_hash_t h = hash_string(n);
+	for (int i = lib->functions.size; i--;)
+	{
+		array_get(&lib->functions, vm_ffi_lib_func_t, f, i);
+		if (f->hash == h)
+			return f;
+	}
+	return NULL;
+}
+
 static int vm_read_functions(vm_t *vm) {
 
 	int structs_start = *(int*)(vm->program + vm->program_size - sizeof(int));
@@ -1985,6 +2054,38 @@ static int vm_read_functions(vm_t *vm) {
 	tinystreamreader_t tsr;
 	tsr_init(&tsr, &vm->program[structs_start], vm->program_size);
 
+	int numlibs = tsr32(&tsr);
+	for (int i = 0; i < numlibs; i++)
+	{
+		//read string
+		dynstring ds = dynalloc(32);
+		while (1)
+		{
+			uint8_t ch = tsr8(&tsr);
+			if (!ch)break;
+			dynpush(&ds, ch);
+		}
+		//printf("ds = %s\n", ds);
+		vm_ffi_lib_t lib;
+		snprintf(lib.name, sizeof(lib.name), "%s", ds);
+		lib.hash = hash_string(lib.name);
+		lib.handle = vm_library_handle_open(ds);
+		if (!lib.handle)
+		{
+			fail_lib:
+			printf("failed to load library '%s'\n", ds);
+			dynfree(&ds);
+			return 1;
+		}
+		array_init(&lib.functions, vm_ffi_lib_func_t);
+		if (vm_library_read_functions(vm, &lib))
+		{
+			goto fail_lib;
+		}
+		array_push(&vm->libs, &lib);
+		//printf("added lib %s with %d funcs\n", lib.name, lib.functions.size);
+		dynfree(&ds);
+	}
 	int numstructs = tsr32(&tsr);
 	//printf("numstructs=%d\n", numstructs);
 	for (int i = 0; i < numstructs; i++)
@@ -2035,7 +2136,7 @@ static int vm_read_functions(vm_t *vm) {
 	}
 #endif
 
-	char id[128] = { 0 };
+	char id[4096] = { 0 };
 	int id_len = 0;
 
 	int start = *(int*)(vm->program + vm->program_size - sizeof(int) - sizeof(int));
@@ -2160,6 +2261,7 @@ vm_t *vm_create(const char *program, int programsize) {
 	vm->varcachesize = 0;
 
 	array_init(&vm->structs, cstruct_t);
+	array_init(&vm->libs, vm_ffi_lib_t);
 
 	vector_init(&vm->ffi_callbacks);
 
@@ -2196,7 +2298,11 @@ vm_t *vm_create(const char *program, int programsize) {
 	vm->numthreadrunners=0;
 	vm->thrunner = NULL;
 
-	vm_read_functions(vm);
+	if (vm_read_functions(vm))
+	{
+		vm_free(vm);
+		return NULL;
+	}
 	vm->is_running = true; //not needed anymore?
 	return vm;
 }
@@ -2228,7 +2334,86 @@ void vm_set_user_pointer(vm_t *vm, void *ptr)
 	vm->m_userpointer = ptr;
 }
 
+void* vm_library_handle_open(const char *libname)
+{
+	void *p = 0;
+#ifdef _WIN32
+	p = LoadLibraryA(libname);
+#else
+	p = dlopen(libname, RTLD_LAZY);
+#endif
+	return p;
+}
+
+void vm_library_handle_close(void *p)
+{
+#ifdef _WIN32
+	FreeLibrary((HMODULE)p);
+#else
+	dlclose(p);
+#endif
+}
+
+dynstring GetLastErrorAsString()
+{
+	//Get the error message, if any.
+	DWORD errorMessageID = GetLastError();
+	if (errorMessageID == 0)
+		return NULL;
+
+	LPSTR messageBuffer = NULL;
+	size_t size = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+		NULL, errorMessageID, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&messageBuffer, 0, NULL);
+
+	dynstring ds = dynnew(messageBuffer);
+	//Free the buffer.
+	LocalFree(messageBuffer);
+	return ds;
+}
+int vm_library_read_functions(vm_t *vm, vm_ffi_lib_t *l)
+{
+	if (!l->handle)
+		return 1;
+#if 0
+	HMODULE lib = LoadLibraryExA(l->name, NULL, DONT_RESOLVE_DLL_REFERENCES);
+	if (!lib)
+	{
+		dynstring errstr = GetLastErrorAsString();
+		printf("'%s' -> %s\n", l->name, errstr);
+		dynfree(&errstr);
+		return 1;
+	}
+#endif
+	HMODULE lib = (HMODULE)l->handle;
+	//assert(((PIMAGE_DOS_HEADER)lib)->e_magic == IMAGE_DOS_SIGNATURE);
+	PIMAGE_NT_HEADERS header = (PIMAGE_NT_HEADERS)((BYTE *)lib + ((PIMAGE_DOS_HEADER)lib)->e_lfanew);
+	//assert(header->Signature == IMAGE_NT_SIGNATURE);
+	//assert(header->OptionalHeader.NumberOfRvaAndSizes > 0);
+	PIMAGE_EXPORT_DIRECTORY exports = (PIMAGE_EXPORT_DIRECTORY)((BYTE *)lib + header->
+		OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
+	//assert(exports->AddressOfNames != 0);
+	BYTE** names = (BYTE**)((int)lib + exports->AddressOfNames);
+	for (int i = 0; i < exports->NumberOfNames; i++)
+	{
+		const char *exportName = (BYTE *)lib + (int)names[i];
+		vm_ffi_lib_func_t func;
+		snprintf(func.name, sizeof(func.name), "%s", exportName);
+		func.address = (void*)GetProcAddress(lib, func.name);
+		if (!func.address)
+		{
+			printf("failed to load function '%s' from '%s'\n", exportName, l->name);
+			continue;
+		}
+		//printf("Export: %s\n", (BYTE *)lib + (int)names[i]);
+		func.hash = hash_string(func.name);
+		array_push(&l->functions, &func);
+	}
+	return 0;
+}
+
 void vm_free(vm_t *vm) {
+	if (!vm)
+		return;
 	vm->thrunner = NULL;
 
 	int num_vars_left = vector_count(&vm->vars);
@@ -2384,10 +2569,20 @@ void vm_free(vm_t *vm) {
 	}
 	vector_free(&vm->__mem_allocations);
 
+	/* cleanup the loaded libraries and their functions arrays and stuff */
+	for (int i = 0; i < vm->libs.size; i++)
+	{
+		array_get(&vm->libs, vm_ffi_lib_t, lib, i);
+		vm_library_handle_close(lib->handle);
+		array_free(&lib->functions);
+	}
+	array_free(&vm->libs);
+
 	free(vm);
 }
 
 int vm_get_num_active_threadrunners(vm_t *vm) {
+	if (!vm) return 0;
 	return vm->numthreadrunners;
 }
 

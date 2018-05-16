@@ -28,6 +28,16 @@ void dynadd(dynstring *s, const char *str)
         dynaddn(s, str, strlen(str));
 }
 
+unsigned long hash_string(const char *str)
+{
+	unsigned long hash = 5381;
+	int c;
+
+	while (c = *str++)
+		hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+
+	return hash;
+}
 
 int sys_get_files_from_path(const char *path, file_info_t **files, size_t *outnumfiles) {
 	*files = NULL;

@@ -94,6 +94,9 @@ static int parser_read_string(parser_t *pp) {
 				int value = ((nibble1 << 4) | nibble2) & 255;
 				ch = value;
 			} break;
+			case 'r':
+				ch = '\r';
+				break;
 			case 'n':
 				ch = '\n';
 				break;
@@ -670,17 +673,6 @@ static int parser_variable(parser_t *pp, const char *id, bool load, bool create_
 	}
 
 	return 0;
-}
-
-inline unsigned long parser_hash_string(const char *str)
-{
-	unsigned long hash = 5381;
-	int c;
-
-	while (c = *str++)
-		hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
-
-	return hash;
 }
 
 cstruct_t *parser_get_struct(parser_t *pp, const char *name, int *index)
@@ -1851,6 +1843,15 @@ typedef struct {
 	kstring_t contents;
 } pre_t;
 
+void pre_clear_libstrings(vector *libs)
+{
+	for (int i = 0; i < vector_count(libs); i++)
+	{
+		dynstring s = (dynstring)vector_get(libs, i);
+		dynfree(&s);
+	}
+}
+
 void pre_clear_defines(vector *def)
 {
 	for (int i = 0; i < vector_count(def); ++i) {
@@ -1905,7 +1906,7 @@ int pp_locate(parser_t *pp, int token, int *invalid_tokens)
 	return ret;
 }
 
-int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines)
+int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines, vector *libs)
 {
 	parser_t *pp = (parser_t*)xmalloc(sizeof(parser_t));
 	parser_init(pp);
@@ -1974,8 +1975,38 @@ int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines)
 			}
 			if (!strcmp(pp->string, "endif")) {
 
-			} else if (!strcmp(pp->string, "else")) {
+			}
+			else if (!strcmp(pp->string, "else")) {
 
+			} else if(!strcmp(pp->string, "pragma"))
+			{
+				if (!pp_accept(pp, TK_IDENT))
+					return pre_err(pp, "expected identifier!\n");
+				if (!strcmp(pp->string, "comment"))
+				{
+					if (!pp_accept(pp, TK_LPAREN))
+						return pre_err(pp, "lparen!\n");
+
+					if (!pp_accept(pp, TK_IDENT))
+						return pre_err(pp, "comment type!\n");
+
+					if (strcmp(pp->string, "lib"))
+						return pre_err(pp, "unknown comment!\n");
+
+					if (!pp_accept(pp, TK_COMMA))
+						return pre_err(pp, "comma!\n");
+
+
+					if (!pp_accept(pp, TK_STRING))
+						return pre_err(pp, "libname!\n");
+
+					const char *libname = pp->string;
+					vector_add(libs, dynnew(libname));
+
+					if (!pp_accept(pp, TK_RPAREN))
+						return pre_err(pp, "rparen!\n");
+				}
+				else return pre_err(pp, "expected comment!\n");
 			} else if(!strcmp(pp->string, "if")) {
 				//skip till end of line
 				int loc = pp_locate(pp, TK_NEWLINE, NULL);
@@ -2054,7 +2085,7 @@ int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines)
 				kstring_init(&tmp);
 
 				//process this file aswell recursively
-				if (pre_buf(fbuf, fsize, &tmp, defines))
+				if (pre_buf(fbuf, fsize, &tmp, defines, libs))
 				{
 					kstring_free(&tmp);
 					return pre_err(pp, "failed to pre_buf recursively!");
@@ -2136,11 +2167,20 @@ int parser_compile_string(const char *scriptbuf, char **out_program, int *out_pr
 	vector_init(&defines);
 	kstring_t processed;
 	kstring_init(&processed);
-	if (pre_buf(pp->scriptbuffer, pp->scriptbuffersize, &processed, &defines)) {
+	vector libstrings;
+	vector_init(&libstrings);
+
+	if (pre_buf(pp->scriptbuffer, pp->scriptbuffersize, &processed, &defines, &libstrings)) {
 		kstring_free(&processed);
 		pre_clear_defines(&defines);
+		pre_clear_libstrings(&libstrings);
 		return 1;
 	}
+	
+	//TODO this is leaking memory when it fails
+	//FIX libstrings
+	//* fixed guess just cleared when pre_buf fails
+
 	pre_clear_defines(&defines);
 	//xfree(pp->scriptbuffer);
 	pp->scriptbuffer = kstring_get(&processed);
@@ -2191,6 +2231,18 @@ int parser_compile_string(const char *scriptbuf, char **out_program, int *out_pr
 	tinystream_t ts;
 	ts_init(&ts);
 	//printf("structs size = %d\n", pp->structs.size);
+	ts32(&ts, vector_count(&libstrings));
+	for (int i = 0; i < vector_count(&libstrings); i++)
+	{
+		dynstring s = (dynstring)vector_get(&libstrings, i);
+		//printf("adding s = %s\n", s);
+		for (int k = 0; k < dynlen(&s); k++)
+		{
+			ts8(&ts, s[k]);
+		}
+		ts8(&ts, 0);
+		dynfree(&s);
+	}
 	ts32(&ts, pp->structs.size);
 	for (int i = 0; i < pp->structs.size; i++)
 	{
@@ -2217,7 +2269,7 @@ int parser_compile_string(const char *scriptbuf, char **out_program, int *out_pr
 			ts32(&ts, 0); //TODO FIX THIS
 		}
 	}
-
+	vector_free(&libstrings);
 	*out_program_size += (ts.buffer.size + sizeof(int));
 #endif
 	rearranged_program = (char*)xmalloc(*out_program_size);

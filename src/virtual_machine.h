@@ -115,6 +115,7 @@ struct vm_s {
 	void *m_userpointer;
 
 	dynarray structs;
+	dynarray libs;
 };
 
 #define vm_stack vm->thrunner->stack
@@ -158,6 +159,31 @@ static VM_INLINE intptr_t stack_pop(vm_t *vm) {
 static VM_INLINE varval_t *stack_pop_vv(vm_t *vm) {
 	return (varval_t*)stack_pop(vm);
 }
+
+typedef vm_long_t vm_hash_t;
+
+typedef struct
+{
+	char name[256];
+	vm_hash_t hash;
+	void *address;
+} vm_ffi_lib_func_t;
+
+typedef struct
+{
+	char name[256];
+	dynarray functions;
+	vm_hash_t hash;
+	void *handle;
+} vm_ffi_lib_t;
+
+
+vm_ffi_lib_func_t *vm_library_function_get(vm_t *vm, vm_ffi_lib_t *lib, const char *n);
+vm_ffi_lib_t *vm_library_get(vm_t *vm, const char *n);
+vm_ffi_lib_func_t *vm_library_function_get_any(vm_t *vm, const char *n, vm_ffi_lib_t **which_lib);
+
+void* vm_library_handle_open(const char *libname);
+void vm_library_handle_close(void *p);
 
 #ifdef MEMORY_DEBUG
 #define vm_mem_free(a,b) (vm_mem_free_r(a,b,__FILE__,__LINE__))

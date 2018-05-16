@@ -687,8 +687,10 @@ int vm_do_jit(vm_t *vm, HMODULE lib, DWORD addr, varval_t **argv, int argc)
 }
 #endif //still works but looks cleaner with functions
 
-int vm_do_jit(vm_t *vm, const char *libname, const char *funcname)
+int vm_do_jit(vm_t *vm, vm_ffi_lib_func_t *lf)
 {
+	//printf("vm_do_jit(%s)\n", lf->name);
+
 	int status = FFI_GENERIC_ERROR;
 
 #ifndef _WIN32
@@ -697,6 +699,8 @@ int vm_do_jit(vm_t *vm, const char *libname, const char *funcname)
 #define GetProcAddress dlsym
 #define FreeLibrary dlclose
 #endif
+
+#if 0
 
 #ifdef _WIN32
 	HMODULE lib = LoadLibraryA(libname);
@@ -710,6 +714,11 @@ int vm_do_jit(vm_t *vm, const char *libname, const char *funcname)
 	{
 		return FFI_FUNCTION_NOT_FOUND;
 	}
+
+#endif
+
+	DWORD addr = lf->address;
+
 	int funcsize = 2000;
 	size_t page_size=0;
 #ifdef _WIN32
@@ -842,19 +851,18 @@ int sf_set_ffi_lib(vm_t *vm)
 	return 0;
 }
 
-void obj_buffer_deconstructor(vm_t *vm, void *p)
-{
-	if (p)
-		free(p);
-}
-
 int sf_buffer(vm_t *vm)
 {
 	int sz = se_getint(vm, 0);
 
-	varval_t *vv = se_createobject(vm, VT_OBJECT_BUFFER, NULL, NULL, obj_buffer_deconstructor); //todo add the file deconstructor? :D
-	void *p = malloc(sz);
-	vv->as.obj->obj = (void*)p;
+	void vt_buffer_deconstructor(vm_t *vm, vt_buffer_t *vtb);
+	varval_t *vv = se_createobject(vm, VT_OBJECT_BUFFER, NULL, NULL, (void*)vt_buffer_deconstructor); //todo add the file deconstructor? :D
+	vt_buffer_t *vtb = (vt_buffer_t*)malloc(sizeof(vt_buffer_t) + sz);
+	vtb->size = sz;
+	vtb->data = ((char*)vtb) + sizeof(vt_buffer_t);
+	//printf("spawning %s\n", cs->name);
+	vtb->type = -1;
+	vv->as.obj->obj = vtb;
 	stack_push_vv(vm, vv);
 	return 1;
 }
