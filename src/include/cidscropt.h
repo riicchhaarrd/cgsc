@@ -159,8 +159,19 @@ struct varval_s {
 	} as;
 };
 
+#define VF_LOCAL (1<<0)
+#define VF_CACHED (1<<1)
+#define VF_POINTER (1<<2)
+#define VF_UNSIGNED (1<<3)
+#define VF_FFI (1<<4)
+#define VF_NOFREE (1<<5) //DO_NOT_FREE
+#define VV_HAS_FLAG(x,y) ( (x->flags & y) == y )
+
 const char *se_vv_to_string(vm_t *vm, varval_t *vv);
 const char *se_index_to_string(vm_t *vm, int i);
+
+void se_vv_object_free(vm_t *vm, varval_t *vv);
+int se_vv_type(vm_t *vm, varval_t *vv);
 
 #ifdef MEMORY_DEBUG
 varval_t *se_vv_create_r(vm_t*, e_var_types_t type,const char *,int);

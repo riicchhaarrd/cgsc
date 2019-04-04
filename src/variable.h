@@ -75,12 +75,6 @@ static const char *e_var_types_strings[] = {
 	0
 };
 
-#define VF_LOCAL (1<<0)
-#define VF_CACHED (1<<1)
-#define VF_POINTER (1<<2)
-#define VF_UNSIGNED (1<<3)
-#define VF_FFI (1<<4)
-
 static const char *vv_get_type_string(varval_t *vv) {
 	static char typestring[256] = { 0 };
 	snprintf(typestring, sizeof(typestring), "%s%s%c", VV_IS_UNSIGNED(vv) ? "unsigned": "", e_var_types_strings[VV_TYPE(vv)], VV_IS_POINTER(vv) ? '*' : '\0');

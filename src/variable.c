@@ -401,6 +401,9 @@ int se_vv_free_r(vm_t *vm, varval_t *vv, const char *_file, int _line) {
 		return 1;
 	}
 
+	if (VV_HAS_FLAG(vv, VF_NOFREE))
+		return 1;
+
 	if (vv->refs > 0) {
 		//printf("VV->REFS > 0 (%d, TYPE=%s)\n", vv->refs, e_var_types_strings[vv->type]);
 		return 1;
@@ -411,11 +414,13 @@ int se_vv_free_r(vm_t *vm, varval_t *vv, const char *_file, int _line) {
 	if(vars_created == 0)
 		printf("vars freed=%d\n", vars_created);
 #endif
-	if (vv->type == VAR_TYPE_STRING)
-		se_vv_string_free(vm, vv);
-	else if (VV_USE_REF(vv))
-		se_vv_object_free(vm, vv);
-
+	if (!VV_IS_POINTER(vv))
+	{
+		if (vv->type == VAR_TYPE_STRING)
+			se_vv_string_free(vm, vv);
+		else if (VV_USE_REF(vv))
+			se_vv_object_free(vm, vv);
+	}
 	int loc = vector_locate(&vm->vars, vv);
 
 	if (loc != -1) {

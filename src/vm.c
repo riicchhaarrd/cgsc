@@ -66,7 +66,10 @@ int vv_integer_internal_size(varval_t *vv)
 	}
 	return 0;
 }
-
+int se_vv_type(vm_t *vm, varval_t *vv)
+{
+	return VV_TYPE(vv);
+}
 vm_long_t vv_cast_long(vm_t *vm, varval_t *vv)
 {
 	switch (VV_TYPE(vv))
@@ -84,6 +87,14 @@ vm_long_t vv_cast_long(vm_t *vm, varval_t *vv)
 	case VAR_TYPE_STRING:
 	case VAR_TYPE_INDEXED_STRING:
 		return atoll(se_vv_to_string(vm, vv));
+	case VAR_TYPE_OBJECT:
+	{
+		if (vv->as.obj->type == VT_OBJECT_BUFFER)
+		{
+			vt_buffer_t *vtb = (vt_buffer_t*)vv->as.obj->obj;
+			return vtb->data;
+		}
+	} break;
 	}
 	return vv->as.longint;
 }
@@ -487,7 +498,9 @@ varval_t *se_createobject(vm_t *vm, int type, vt_obj_field_custom_t* custom, voi
 	return vv;
 }
 
-#if 0
+//apparently unsafe? check later
+//temporarily enabled again because i'm using this in my project for something
+#if 1
 //unsafe
 void se_set_object_field(vm_t *vm, const char *key) {
 	varval_t *val = (varval_t*)stack_pop(vm);
@@ -498,7 +511,10 @@ void se_set_object_field(vm_t *vm, const char *key) {
 		istr = se_istring_create(vm, key);
 	se_vv_set_field(vm, obj, istr->index, val);
 	se_vv_free(vm, val); //free the value as the set_field creates a copy of the value
-	stack_push_vv(vm, obj); //put it back :D
+	if (!se_vv_free(vm, obj)) //should free this aswell right if it's a temp obj)
+		stack_push(vm, 0);
+	else
+		stack_push_vv(vm, obj); //put it back :D
 }
 #endif
 
@@ -990,7 +1006,20 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 			varval_t *vv_arr = (varval_t*)stack_pop(vm);
 
 			if (VV_TYPE(vv_arr) == VAR_TYPE_ARRAY) {
+				just_normal_obj:
 				se_vv_set_field(vm, vv_arr, se_vv_to_int(vm, vv_index), vv);
+			}
+			else if (VV_TYPE(vv_arr) == VAR_TYPE_OBJECT) {
+				switch (vv_arr->as.obj->type)
+				{
+				case VT_OBJECT_BUFFER:
+				{
+					int ind_as_int = vv_cast_long(vm, vv_index);
+					vt_buffer_t *vtb = (vt_buffer_t*)vv_arr->as.obj->obj;
+					vtb->data[ind_as_int % vtb->size] = vv_cast_long(vm, vv) & 0xff;
+				} break;
+				default: goto just_normal_obj;
+				}
 			}
 			else {
 				printf("'%s' is not an array!\n", e_var_types_strings[VV_TYPE(vv_arr)]);
@@ -1051,7 +1080,7 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 			varval_t *arr_index = (varval_t*)stack_pop(vm);
 			varval_t *arr = (varval_t*)stack_pop(vm);
 			int idx = 0;
-			if (VV_TYPE(arr)== VAR_TYPE_VECTOR) {
+			if (VV_TYPE(arr) == VAR_TYPE_VECTOR) {
 				idx = se_vv_to_int(vm, arr_index);
 				if (idx < 0 || idx > 2) {
 					printf("vector index out of bounds!\n");
@@ -1059,7 +1088,21 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 				}
 				se_addfloat(vm, arr->as.vec[idx]);
 			}
-			else if (VV_TYPE(arr)== VAR_TYPE_ARRAY) {
+			else if (VV_TYPE(arr) == VAR_TYPE_OBJECT)
+			{
+				switch (arr->as.obj->type)
+				{
+				case VT_OBJECT_BUFFER:
+				{
+					int ind_as_int = vv_cast_long(vm, arr_index);
+					vt_buffer_t *vtb = (vt_buffer_t*)arr->as.obj->obj;
+					se_addchar(vm, vtb->data[ind_as_int%vtb->size]);
+				} break;
+				default: goto just_normal_objload;
+				}
+			}
+			else if (VV_TYPE(arr) == VAR_TYPE_ARRAY) {
+				just_normal_objload:
 				idx = se_vv_to_int(vm, arr_index);
 				varval_t *vv = se_vv_get_field(vm, arr, idx);
 				if (NULL == vv)
