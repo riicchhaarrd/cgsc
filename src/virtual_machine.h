@@ -14,12 +14,6 @@
 #define VM_STACK_SIZE (65000)
 
 typedef enum {
-	E_VM_RET_NONE,
-	E_VM_RET_WAIT,
-	E_VM_RET_ERROR,
-} e_vm_return_codes;
-
-typedef enum {
 	E_VM_ERR_NONE,
 	E_VM_ERR_DIVIDE_BY_ZERO,
 } e_vm_error_codes;

@@ -39,6 +39,9 @@
     <ClCompile Include="..\src\asm.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\resolve_exports.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\cvector.h">

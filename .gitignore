@@ -16,3 +16,5 @@
 *.exp
 *.dll
 *.user
+*.out
+*.lnk

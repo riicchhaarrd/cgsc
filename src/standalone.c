@@ -21,14 +21,14 @@ void signal_int(int parm) {
 int main(int argc, char **argv) {
 	//SDL_Init(SDL_INIT_VIDEO);
 
-#if 1
+#if 0
 	if (argc < 2) {
 		printf("No script specified.\n");
 		goto _wait_and_exit;
 	}
 	const char *filename = argv[1];
 #else
-	const char *filename = "../examples/test.gcx";
+	const char *filename = "../examples/bench.gcx";
 #endif
 #ifdef _WIN32
 	LARGE_INTEGER freq;

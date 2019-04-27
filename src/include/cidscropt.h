@@ -8,6 +8,14 @@ extern "C" {
 
 //#define MEMORY_DEBUG
 
+//should be here probably, so the program incorporating this can react more accordingly
+typedef enum {
+	E_VM_RET_NONE,
+	E_VM_RET_WAIT,
+	E_VM_RET_FUNCTION_NOT_FOUND,
+	E_VM_RET_ERROR,
+} e_vm_return_codes;
+
 typedef struct
 {
 	uint32_t code_offset;

@@ -994,7 +994,7 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 			varval_t *vv = se_vv_create(vm, VAR_TYPE_VECTOR);
 			for (int i = 3; i--;) {
 				varval_t *fl = (varval_t*)stack_pop(vm);
-				vv->as.vec[2 - i] = (float)vv_cast_double(vm, fl);
+				vv->as.vec[i] = (float)vv_cast_double(vm, fl);
 				se_vv_free(vm, fl);
 			}
 			stack_push_vv(vm, vv);
@@ -2015,7 +2015,7 @@ int vm_exec_thread(vm_t *vm, const char *func_name, int numargs) {
 	}
 
 	if (fi == NULL)
-		return 1;
+		return E_VM_RET_FUNCTION_NOT_FOUND;
 	return vm_exec_thread_pointer(vm, fi->position, numargs);
 }
 
@@ -2363,7 +2363,7 @@ int vm_exec_ent_thread(vm_t *vm, varval_t *new_self, const char *func_name, int 
 	}
 
 	if (fi == NULL)
-		return 1;
+		return E_VM_RET_FUNCTION_NOT_FOUND;
 	return vm_exec_ent_thread_pointer(vm, new_self, fi->position, numargs);
 }
 
@@ -2397,6 +2397,7 @@ void vm_library_handle_close(void *p)
 #endif
 }
 
+#ifdef _WIN32
 dynstring GetLastErrorAsString()
 {
 	//Get the error message, if any.
@@ -2413,6 +2414,8 @@ dynstring GetLastErrorAsString()
 	LocalFree(messageBuffer);
 	return ds;
 }
+#endif
+
 int vm_library_read_functions(vm_t *vm, vm_ffi_lib_t *l)
 {
 	if (!l->handle)
@@ -2427,6 +2430,7 @@ int vm_library_read_functions(vm_t *vm, vm_ffi_lib_t *l)
 		return 1;
 	}
 #endif
+#ifdef _WIN32
 	HMODULE lib = (HMODULE)l->handle;
 	//assert(((PIMAGE_DOS_HEADER)lib)->e_magic == IMAGE_DOS_SIGNATURE);
 	PIMAGE_NT_HEADERS header = (PIMAGE_NT_HEADERS)((BYTE *)lib + ((PIMAGE_DOS_HEADER)lib)->e_lfanew);
@@ -2451,6 +2455,11 @@ int vm_library_read_functions(vm_t *vm, vm_ffi_lib_t *l)
 		func.hash = hash_string(func.name);
 		array_push(&l->functions, &func);
 	}
+#else
+
+	void read_elf_exported_symbols(vm_t *vm, vm_ffi_lib_t *l, const char* filename);
+	read_elf_exported_symbols(vm, l, l->name);
+#endif
 	return 0;
 }
 
