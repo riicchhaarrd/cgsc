@@ -9,7 +9,7 @@
 #define SOURCE_STRING(...) #__VA_ARGS__
 #if 1
 static const char *def = SOURCE_STRING(
-typedef struct
+	typedef struct
 {
 	int size;
 	int capacity;
@@ -193,23 +193,14 @@ scan:
 			while ((c = nxt) != '\n' && c)
 				;
 		}
-		else if(peek == '*')
-		{
-			++ps->pos;
-		repeat:
-			while (1)
-			{
-				int nx = nxt;
-				if (!nx) break;
-				if (nx == '*' && pk == '/')
-				{
-					++ps->pos;
-					break;
-				}
-			}
-		}
 		else
-			return TOKEN_ILLEGAL;
+		{
+		repeat:
+			while ((c = nxt) != '*' && c)
+				;
+			if (pk != '/')
+				goto repeat;
+		}
 		goto scan;
 	} break;
 	default:

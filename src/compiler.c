@@ -119,7 +119,7 @@ static int parser_read_string(parser_t *pp) {
 		if (!parser_append_to_parse_string(pp, ch))
 			break;
 	}
-	break_out:
+break_out:
 	return is_char ? TK_CHAR : TK_STRING;
 }
 
@@ -131,7 +131,7 @@ static bool is_ident_char(int c)
 static bool pp_is_token_enabled(parser_t *pp, int t) {
 	if (!pp->enabledtokens)
 		return true;
-	for (int i = 0; pp->enabledtokens[i] && pp->enabledtokens[i] != TK_EOF; ++i) {
+	for (int i = 0; pp->enabledtokens[i] != TK_EOF; ++i) {
 		if (pp->enabledtokens[i] == t)
 			return true;
 	}
@@ -322,7 +322,7 @@ scan:
 	case ':': return TK_COLON;
 	case ';': return TK_SEMICOLON;
 	case '.':
-		if(isdigit(pp->scriptbuffer[pp->curpos]))//if (isdigit(pp->scriptbuffer[pp->curpos + 1]))
+		if (isdigit(pp->scriptbuffer[pp->curpos]))//if (isdigit(pp->scriptbuffer[pp->curpos + 1]))
 			goto get_num;
 		return TK_DOT;
 	case '[': return TK_LBRACK;
@@ -641,8 +641,8 @@ static void program_add_short(parser_t *pp, int i) {
 
 static var_t *parser_create_local_variable(parser_t *pp);
 static int parser_variable(parser_t *pp, const char *id, bool load, bool create_if_not_exist, var_t **out, int op) {
-	if(out)
-	*out = NULL;
+	if (out)
+		*out = NULL;
 
 	if (!strcmp(id, "level") || !strcmp(id, "self")) {
 		program_add_opcode(pp, strcmp(id, "level") ? OP_GET_SELF : OP_GET_LEVEL);
@@ -650,8 +650,8 @@ static int parser_variable(parser_t *pp, const char *id, bool load, bool create_
 	else {
 
 		var_t *v = parser_find_local_variable(pp, id);
-		if(out)
-		*out = v;
+		if (out)
+			*out = v;
 
 		if (!v) {
 			if (!create_if_not_exist) {
@@ -682,7 +682,7 @@ cstruct_t *parser_get_struct(parser_t *pp, const char *name, int *index)
 		array_get(&pp->structs, cstruct_t, cs, i);
 		if (!strcmp(cs->name, name))
 		{
-			if(index!=NULL)
+			if (index != NULL)
 				*index = i;
 			return cs;
 		}
@@ -717,7 +717,8 @@ static int parser_factor(parser_t *pp) {
 			printf("function '%s' was not found\n", pp->string);
 			return 1;
 		}
-	} else if(pp_accept(pp, TK_AND)) {
+	}
+	else if (pp_accept(pp, TK_AND)) {
 		//get address of
 		if (!pp_accept(pp, TK_IDENT))
 			return 1;
@@ -733,13 +734,16 @@ static int parser_factor(parser_t *pp) {
 		if (parser_variable(pp, pp->string, true, false, NULL, OP_LOAD_REF))
 			return 1;
 		program_add_opcode(pp, OP_DEREFERENCE);
-	} else if(pp_accept(pp,TK_CHAR)) {
+	}
+	else if (pp_accept(pp, TK_CHAR)) {
 		program_add_opcode(pp, OP_PUSH);
-		program_add_int(pp,*(int32_t*)&pp->string[0]);
-	} else if (pp_accept(pp, TK_INT)) {
+		program_add_int(pp, *(int32_t*)&pp->string[0]);
+	}
+	else if (pp_accept(pp, TK_INT)) {
 		program_add_opcode(pp, OP_PUSH);
 		program_add_int(pp, pp->integer);
-	} else if (pp_accept(pp, TK_LBRACK)) {
+	}
+	else if (pp_accept(pp, TK_LBRACK)) {
 		if (pp_accept(pp, TK_RBRACK)) {
 			program_add_opcode(pp, OP_PUSH_ARRAY);
 			program_add_short(pp, 0);
@@ -755,7 +759,8 @@ static int parser_factor(parser_t *pp) {
 			program_add_short(pp, arr_len);
 			pp_expect(pp, TK_RBRACK);
 		}
-	} else if (pp_accept(pp, TK_R_NEW)) {
+	}
+	else if (pp_accept(pp, TK_R_NEW)) {
 		if (!pp_expect(pp, TK_IDENT))
 			return 1;
 #if 0
@@ -777,9 +782,11 @@ static int parser_factor(parser_t *pp) {
 		}
 		else
 			return 1;
-	} else if(pp_accept(pp,TK_R_NULL)) {
+	}
+	else if (pp_accept(pp, TK_R_NULL)) {
 		program_add_opcode(pp, OP_PUSH_NULL);
-	} else if (pp_accept(pp, TK_FLOAT)) {
+	}
+	else if (pp_accept(pp, TK_FLOAT)) {
 		program_add_opcode(pp, OP_PUSHF);
 		program_add_float(pp, pp->number);
 	}
@@ -792,57 +799,59 @@ static int parser_factor(parser_t *pp) {
 			index = parser_create_indexed_string(pp, pp->string);
 
 		program_add_int(pp, index); //the index of string
-	} else if(pp_accept(pp,TK_IDENT)) {
+	}
+	else if (pp_accept(pp, TK_IDENT)) {
 		char id[128] = { 0 };
 		snprintf(id, sizeof(id) - 1, "%s", pp->string);
 
 		if (pp_accept(pp, TK_LPAREN)) {
-				
-				int numargs = 0;
 
-				if (pp_accept(pp, TK_RPAREN))
-					goto no_args_lol;
-				do {
-					++numargs;
-					if (parser_expression(pp)) //auto pushes
-						return 1;
-				} while (pp_accept(pp, TK_COMMA));
+			int numargs = 0;
 
-				pp_expect(pp, TK_RPAREN);
+			if (pp_accept(pp, TK_RPAREN))
+				goto no_args_lol;
+			do {
+				++numargs;
+				if (parser_expression(pp)) //auto pushes
+					return 1;
+			} while (pp_accept(pp, TK_COMMA));
 
-			no_args_lol:
+			pp_expect(pp, TK_RPAREN);
 
-				//printf("function call with RETURN !!!! %s()\n", id);
-				{
-					bool found = false;
-					for (int i = 0; i <= pp->code_segment_size; i++) {
-						code_segment_t *seg = &pp->code_segments[i];
-						if (!strcmp(seg->id, id)) {
-							found = true;
-							program_add_opcode(pp, OP_CALL);
-							pp->current_segment->relocations[pp->current_segment->relocation_size++] = pp->program_counter;
-							program_add_int(pp, seg->original_loc);
-							program_add_int(pp, numargs);
-							break;
-						}
-					}
+		no_args_lol:
 
-					if (!found) {
-
-						//just add it to the 'builtin' funcs and maybe that works? :D
-						//printf("function '%s' does not exist!\n", id);
-						program_add_opcode(pp, OP_CALL_BUILTIN);
-
-						scr_istring_t *istr = NULL;
-						int index = parser_find_indexed_string(pp, id, &istr);
-
-						if (istr == NULL)
-							index = parser_create_indexed_string(pp, id);
-						program_add_int(pp, index); //the index of string
+			//printf("function call with RETURN !!!! %s()\n", id);
+			{
+				bool found = false;
+				for (int i = 0; i <= pp->code_segment_size; i++) {
+					code_segment_t *seg = &pp->code_segments[i];
+					if (!strcmp(seg->id, id)) {
+						found = true;
+						program_add_opcode(pp, OP_CALL);
+						pp->current_segment->relocations[pp->current_segment->relocation_size++] = pp->program_counter;
+						program_add_int(pp, seg->original_loc);
 						program_add_int(pp, numargs);
+						break;
 					}
 				}
-		} else {
+
+				if (!found) {
+
+					//just add it to the 'builtin' funcs and maybe that works? :D
+					//printf("function '%s' does not exist!\n", id);
+					program_add_opcode(pp, OP_CALL_BUILTIN);
+
+					scr_istring_t *istr = NULL;
+					int index = parser_find_indexed_string(pp, id, &istr);
+
+					if (istr == NULL)
+						index = parser_create_indexed_string(pp, id);
+					program_add_int(pp, index); //the index of string
+					program_add_int(pp, numargs);
+				}
+			}
+		}
+		else {
 
 			if (parser_variable(pp, pp->string, true, false, NULL, OP_LOAD))
 				return 1;
@@ -875,7 +884,8 @@ static int parser_factor(parser_t *pp) {
 					break;
 			}
 		}
-	} else if(pp_accept(pp,TK_LPAREN)) {
+	}
+	else if (pp_accept(pp, TK_LPAREN)) {
 		int lparen_savepos = pp->curpos;
 		bool is_cast = false;
 
@@ -927,7 +937,7 @@ static int parser_factor(parser_t *pp) {
 			}
 		}
 
-		if(!is_cast)
+		if (!is_cast)
 		{
 
 			if (parser_expression(pp))
@@ -950,7 +960,8 @@ static int parser_factor(parser_t *pp) {
 
 			pp_expect(pp, TK_RPAREN);
 		}
-	} else {
+	}
+	else {
 		int lineno = parser_get_location(pp);
 		printf("factor: syntax error got %s at %d\n", lex_token_strings[pp->token], lineno);
 		return 1;
@@ -995,11 +1006,11 @@ static int parser_expression(parser_t *pp) {
 		return 1;
 
 	while (1) {
-		if (!pp_accept(pp, TK_PLUS) && !pp_accept(pp, TK_MODULO) && !pp_accept(pp, TK_MINUS) && !pp_accept(pp,TK_OR) && !pp_accept(pp,TK_AND))
+		if (!pp_accept(pp, TK_PLUS) && !pp_accept(pp, TK_MODULO) && !pp_accept(pp, TK_MINUS) && !pp_accept(pp, TK_OR) && !pp_accept(pp, TK_AND))
 			break;
 
 		int tk = pp->token;
-	
+
 		if (parser_term(pp))
 			return 1;
 
@@ -1070,7 +1081,7 @@ int parser_condition(parser_t *pp, case_jump_t *jumps, int *num_jumps) {
 			}
 		}
 	} while (pp_accept(pp, TK_AND_AND) || pp_accept(pp, TK_OR_OR));
-	
+
 	*num_jumps = numjumps;
 
 	return 0;
@@ -1476,13 +1487,15 @@ static int parser_statement(parser_t *pp) {
 	int np;
 	if (pp_accept(pp, TK_EOF)) {
 		return 1;
-	} else if (pp_accept(pp, TK_TYPEDEF)) {
+	}
+	else if (pp_accept(pp, TK_TYPEDEF)) {
 		goto struct_define;
-	} else if(pp_accept(pp,TK_STRUCT)) {
+	}
+	else if (pp_accept(pp, TK_STRUCT)) {
 	struct_define:
 		array_init(&structs, cstruct_t);
 		np = cstructparser(&pp->scriptbuffer[before], &structs, false);
-		if(!np)
+		if (!np)
 		{
 			return 1;
 		}
@@ -1494,18 +1507,22 @@ static int parser_statement(parser_t *pp) {
 			array_push(&pp->structs, cs);
 		}
 		array_free(&structs);
-	} else if(pp_accept(pp,TK_SEMICOLON)) {
+	}
+	else if (pp_accept(pp, TK_SEMICOLON)) {
 		return 0;
-	} else if (pp_accept(pp, TK_LBRACE)) {
+	}
+	else if (pp_accept(pp, TK_LBRACE)) {
 		if (parser_encapsulated_block(pp))
 			goto unexpected_tkn;
-	} else if(pp_accept(pp,TK_R_WAIT)) {
+	}
+	else if (pp_accept(pp, TK_R_WAIT)) {
 		if (parser_expression(pp))
 			return 1;
 
 		program_add_opcode(pp, OP_WAIT);
 		pp_expect(pp, TK_SEMICOLON);
-	} else if(pp_accept(pp,TK_IF) || pp_accept(pp,TK_WHILE) || pp_accept(pp,TK_R_FOR)) {
+	}
+	else if (pp_accept(pp, TK_IF) || pp_accept(pp, TK_WHILE) || pp_accept(pp, TK_R_FOR)) {
 		int tk = pp->token;
 
 		pp_expect(pp, TK_LPAREN);
@@ -1515,8 +1532,8 @@ static int parser_statement(parser_t *pp) {
 				return 1;
 		}
 
-		int cond_pos=pp->program_counter;
-		
+		int cond_pos = pp->program_counter;
+
 		do {
 			if (parser_expression(pp))
 				return 1;
@@ -1526,7 +1543,7 @@ static int parser_statement(parser_t *pp) {
 
 				if (parser_expression(pp))
 					return 1;
-				if(ctkn == TK_EQUALS)
+				if (ctkn == TK_EQUALS)
 					program_add_opcode(pp, OP_EQ);
 				else if (ctkn == TK_NOTEQUAL)
 					program_add_opcode(pp, OP_NEQ);
@@ -1604,7 +1621,8 @@ static int parser_statement(parser_t *pp) {
 			*(int*)(pp->program + from_jmp_relative) = (end_cond_pos - from_jmp_relative - sizeof(int));
 		}
 #if 0
-	} else if(pp_accept(pp,TK_WHILE)) {
+	}
+	else if (pp_accept(pp, TK_WHILE)) {
 
 		int tk = pp->token;
 
@@ -1620,7 +1638,7 @@ static int parser_statement(parser_t *pp) {
 			free(jumps);//free em all!
 			goto unexpected_tkn;
 		}
-		
+
 		pp_expect(pp, TK_RPAREN);
 		pp_expect(pp, TK_LBRACE);
 
@@ -1629,7 +1647,8 @@ static int parser_statement(parser_t *pp) {
 		if (TK_EOF == parser_locate_token(pp, TK_RBRACE, &at, TK_LBRACE)) {
 			printf("could not find rbrace!\n");
 			goto unexpected_tkn;
-		} else {
+		}
+		else {
 			int start = pp->curpos;
 			int end = at - 2;
 			int block = parser_block(pp, start, end);
@@ -1648,7 +1667,7 @@ static int parser_statement(parser_t *pp) {
 			for (int i = 0; i < num_jumps; i++) {
 				printf("jump [type: %s], modif_loc=%d, jmp_to=%d\n", lex_token_strings[jumps[i].type], jumps[i].modif_location, jumps[i].jump_location);
 #if 1
-				if(jumps[i].type==TK_AND_AND)
+				if (jumps[i].type == TK_AND_AND)
 					*(int*)(pp->program + jumps[i].modif_location) = pp->program_counter;
 				else {
 					if (i > 1 && i < num_jumps)
@@ -1663,7 +1682,8 @@ static int parser_statement(parser_t *pp) {
 			free(jumps); //free 'em all! memory leakomon
 		}
 #endif
-	} else if (pp_accept(pp, TK_INT)) {
+	}
+	else if (pp_accept(pp, TK_INT)) {
 		pp->current_segment->size = pp->program_counter - pp->current_segment->original_loc;
 		pp->current_segment = &pp->code_segments[++pp->code_segment_size];
 		pp->current_segment->original_loc = pp->program_counter;
@@ -1672,25 +1692,29 @@ static int parser_statement(parser_t *pp) {
 		snprintf(pp->current_segment->id, sizeof(pp->current_segment->id) - 1, "label_%d", pp->integer);
 
 		pp_expect(pp, TK_COLON);
-	} else if(pp_accept(pp, TK_R_THREAD)) {
+	}
+	else if (pp_accept(pp, TK_R_THREAD)) {
 		is_thread_call = true;
-		pp_accept(pp,TK_IDENT);
+		pp_accept(pp, TK_IDENT);
 		goto accept_ident;
 	}
 	else if (pp_accept(pp, TK_IDENT)) {
-		accept_ident:
+	accept_ident:
 		parser_function_call(pp, pp->string, is_thread_call, false); //we shouldn't be allowed to make functions here right
-	} else if(pp_accept(pp,TK_RETURN)) {
+	}
+	else if (pp_accept(pp, TK_RETURN)) {
 		if (!pp_accept(pp, TK_SEMICOLON)) {
 			if (parser_expression(pp))
 				goto unexpected_tkn;
 			pp_expect(pp, TK_SEMICOLON);
-		} else {
+		}
+		else {
 			program_add_opcode(pp, OP_PUSH_NULL);
 		}
 		program_add_opcode(pp, OP_RET);
-	} else {
-		unexpected_tkn:
+	}
+	else {
+	unexpected_tkn:
 		parser_display_history(pp);
 		int lineno = parser_get_location(pp);
 
@@ -1767,8 +1791,6 @@ void kstring_push_back(kstring_t *k, int c) {
 }
 
 void kstring_add(kstring_t *k, const char *s) {
-	if (!s)
-		return;
 	size_t sz = strlen(s);
 	kstring_resize(k, sz);
 
@@ -1891,14 +1913,14 @@ int pp_locate(parser_t *pp, int token, int *invalid_tokens)
 	{
 		prev = pp->curpos;
 		int t = parser_read_next_token(pp);
-		//printf("t=%s,str=%s,%d\n", lex_token_strings[t],pp->string,pp->curpos);
+
 		bool brk = false;
 		for (int i = 0; invalid_tokens && invalid_tokens[i] != TK_EOF; ++i)
 		{
 			if (invalid_tokens[i] == t) { brk = true; break; }
 		}
-		if (brk) break;
-		if (t == TK_EOF || !t) return -1;
+		if (brk || t == TK_EOF) break;
+
 		if (t == token) {
 			ret = prev;
 			break;
@@ -1913,11 +1935,11 @@ int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines, vector *libs)
 	parser_t *pp = (parser_t*)xmalloc(sizeof(parser_t));
 	parser_init(pp);
 	pp->flags |= PARSER_FLAG_TOKENIZE_NEWLINE;
-	static int etokens[] = {TK_IDENT,TK_SHARP,TK_EOF,0};
+	static int etokens[] = { TK_IDENT,TK_SHARP,TK_EOF };
 	pp->enabledtokens = &etokens;
 	pp->scriptbuffer = buf;
 	pp->scriptbuffersize = sz;
-	
+
 	pre_t pre;
 	kstring_init(&pre.contents);
 	kstring_init(&pre.macro);
@@ -1938,7 +1960,7 @@ int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines, vector *libs)
 
 		int token = parser_read_next_token(pp);
 		//printf("token = %s %s\n", lex_token_strings[token], pp->string);
-		switch(token)
+		switch (token)
 		{
 
 		def_behav:
@@ -1980,7 +2002,8 @@ int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines, vector *libs)
 			}
 			else if (!strcmp(pp->string, "else")) {
 
-			} else if(!strcmp(pp->string, "pragma"))
+			}
+			else if (!strcmp(pp->string, "pragma"))
 			{
 				if (!pp_accept(pp, TK_IDENT))
 					return pre_err(pp, "expected identifier!\n");
@@ -2009,13 +2032,15 @@ int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines, vector *libs)
 						return pre_err(pp, "rparen!\n");
 				}
 				else return pre_err(pp, "expected comment!\n");
-			} else if(!strcmp(pp->string, "if")) {
+			}
+			else if (!strcmp(pp->string, "if")) {
 				//skip till end of line
 				int loc = pp_locate(pp, TK_NEWLINE, NULL);
 				if (loc == -1)
 					return pre_err(pp, "unexpected end of file");
 				pp_goto(pp, loc);
-			} else if (!strcmp(pp->string, "define"))
+			}
+			else if (!strcmp(pp->string, "define"))
 			{
 				if (!pp_accept(pp, TK_IDENT))
 					return pre_err(pp, "expected identifier, bad macro name!");
@@ -2024,17 +2049,11 @@ int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines, vector *libs)
 
 				//take everything of the rest till newline so we can copy it
 				pp_save(pp);
-				while(1)
-				{
-					int chk = parser_read_next_token(pp); //are we hitting rock bottom yet?
-					if(chk == TK_ILLEGAL || chk == TK_EOF)
-						return pre_err(pp, "unexpected end of file at %d (%s)!", pp->curpos, &pp->scriptbuffer[pp->curpos]);
-					pp_goto(pp, sav);
-
+				while (1) {
 					int bs = pp_locate(pp, TK_BACKSLASH, NULL);
 					int nl = pp_locate(pp, TK_NEWLINE, NULL);
 					if (bs == -1 && nl == -1)
-						break;// return pre_err(pp, "macro definition: %s, unexpected end of file at %d (%s)! (bs=%d,nl=%d)", pp->string, pp->curpos, &pp->scriptbuffer[pp->curpos > 100 ? pp->curpos - 100 : pp->curpos], bs, nl);
+						return pre_err(pp, "unexpected end of file!");
 					int low = nl;
 					if (bs != -1 && bs < nl)
 						low = bs;
@@ -2061,7 +2080,8 @@ int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines, vector *libs)
 				kstring_set(&d->value, kstring_get(&pre.contents));//uhh okay
 				vector_add(defines, d);
 				//pp_goto(pp, loc); //cuz newline is 1 character here
-			} else if(!strcmp(pp->string, "include")) {
+			}
+			else if (!strcmp(pp->string, "include")) {
 				if (!pp_accept(pp, TK_LESS))
 					return pre_err(pp, "expected <");
 				//get everything inbetween here
@@ -2079,15 +2099,15 @@ int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines, vector *libs)
 				pp_goto(pp, loc);
 				if (!pp_accept(pp, TK_GREATER))
 					return pre_err(pp, "expected >");
-				
+
 				int cur = pp_tell(pp);
 
 				//printf("contents=%s\n", kstring_get(&pre.contents));
 				char *fbuf = NULL;
 				size_t fsize = 0;
-				if(read_text_file(kstring_get(&pre.contents),&fbuf,(int*)&fsize))
+				if (read_text_file(kstring_get(&pre.contents), &fbuf, (int*)&fsize))
 				{
-					return pre_err(pp, "failed to open include file '%s'!",kstring_get(&pre.contents));
+					return pre_err(pp, "failed to open include file '%s'!", kstring_get(&pre.contents));
 				}
 				kstring_t tmp;
 				kstring_init(&tmp);
@@ -2101,7 +2121,8 @@ int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines, vector *libs)
 				//printf("tmp = %s\n", kstring_get(&tmp));
 				kstring_addk(out, &tmp);
 				kstring_free(&tmp);
-			} else {
+			}
+			else {
 				return pre_err(pp, "unknown directive '%s'!", pp->string);
 			}
 			break;
@@ -2153,9 +2174,9 @@ void ts32(tinystream_t *ts, uint32_t n)
 {
 	char *p = (char*)&n;
 	array_push(&ts->buffer, p);
-	array_push(&ts->buffer, p+1);
-	array_push(&ts->buffer, p+2);
-	array_push(&ts->buffer, p+3);
+	array_push(&ts->buffer, p + 1);
+	array_push(&ts->buffer, p + 2);
+	array_push(&ts->buffer, p + 3);
 	ts->offset += 4;
 }
 
@@ -2165,7 +2186,7 @@ int parser_compile_string(const char *scriptbuf, char **out_program, int *out_pr
 	*out_program_size = 0;
 
 	int retcode = 0;
-	
+
 	parser_t *pp = (parser_t*)xmalloc(sizeof(parser_t));
 	parser_init(pp);
 	pp->scriptbuffer = scriptbuf;
@@ -2184,7 +2205,7 @@ int parser_compile_string(const char *scriptbuf, char **out_program, int *out_pr
 		pre_clear_libstrings(&libstrings);
 		return 1;
 	}
-	
+
 	//TODO this is leaking memory when it fails
 	//FIX libstrings
 	//* fixed guess just cleared when pre_buf fails
@@ -2368,7 +2389,7 @@ int parser_compile_string(const char *scriptbuf, char **out_program, int *out_pr
 
 	ts_free(&ts);
 	xfree(pp->program);
-	
+
 	kstring_free(&processed);
 
 	*out_program = rearranged_program;
