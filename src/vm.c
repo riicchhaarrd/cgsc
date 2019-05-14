@@ -395,14 +395,19 @@ int se_vv_to_string_s(vm_t *vm, varval_t *vv, char **string, size_t len) {
 	switch (VV_TYPE(vv)) {
 	case VAR_TYPE_INDEXED_STRING:
 		*string = se_index_to_string(vm, vv->as.stringindex);
+		break;
 	case VAR_TYPE_STRING:
 		*string = vv->as.string;
+		break;
 	case VAR_TYPE_VECTOR:
 		snprintf(*string, len, "(%f, %f, %f)", vv->as.vec[0], vv->as.vec[1], vv->as.vec[2]);
+		break;
 	case VAR_TYPE_LONG:
 		snprintf(*string, len, "%lld", vv->as.longint);
+		break;
 	case VAR_TYPE_SHORT:
 		snprintf(*string, len, "%h", vv->as.shortint);
+		break;
 	case VAR_TYPE_INT:
 #ifdef _WIN32
 		*string = itoa(vv->as.integer, string, 10);
@@ -410,14 +415,19 @@ int se_vv_to_string_s(vm_t *vm, varval_t *vv, char **string, size_t len) {
 		snprintf(*string, len, "%d", vv->as.integer);
 #endif	
 		//note %f and %lf are same, since float gets promoted to double when calling printf
+		break;
 	case VAR_TYPE_FLOAT:
 		snprintf(*string, len, "%f", vv->as.number);
+		break;
 	case VAR_TYPE_DOUBLE:
 		snprintf(*string, len, "%lf", vv->as.dbl);
+		break;
 	case VAR_TYPE_CHAR:
 		snprintf(*string, len, "%c", vv->as.character);
+		break;
 	case VAR_TYPE_NULL:
 		*string = "[null]";
+		break;
 	case VAR_TYPE_OBJECT:
 		switch (vv->as.obj->type)
 		{
@@ -425,10 +435,14 @@ int se_vv_to_string_s(vm_t *vm, varval_t *vv, char **string, size_t len) {
 			*string = "[managed buffer]";
 		}
 		*string = "[object]";
+		break;
 	case VAR_TYPE_ARRAY:
 		*string = "[array]";
+		break;
+	default:
+		*string = "[unhandled variable type]";
+		break;
 	}
-	*string = "[unhandled variable type]";
 	return 0;
 }
 
