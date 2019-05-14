@@ -391,53 +391,51 @@ static int se_vv_to_int(vm_t *vm, varval_t *vv) {
 	return ret;
 }
 
-const char *se_vv_to_string(vm_t *vm, varval_t *vv) {
-	static char string[128];
-
+int se_vv_to_string_s(vm_t *vm, varval_t *vv, char **string, size_t len) {
 	switch (VV_TYPE(vv)) {
 	case VAR_TYPE_INDEXED_STRING:
-		return se_index_to_string(vm, vv->as.stringindex);
+		*string = se_index_to_string(vm, vv->as.stringindex);
 	case VAR_TYPE_STRING:
-		return vv->as.string;
+		*string = vv->as.string;
 	case VAR_TYPE_VECTOR:
-		snprintf(string, sizeof(string), "(%f, %f, %f)", vv->as.vec[0], vv->as.vec[1], vv->as.vec[2]);
-		return string;
+		snprintf(*string, len, "(%f, %f, %f)", vv->as.vec[0], vv->as.vec[1], vv->as.vec[2]);
 	case VAR_TYPE_LONG:
-		snprintf(string, sizeof(string), "%lld", vv->as.longint);
-		return string;
+		snprintf(*string, len, "%lld", vv->as.longint);
 	case VAR_TYPE_SHORT:
-		snprintf(string, sizeof(string), "%h", vv->as.shortint);
-		return string;
+		snprintf(*string, len, "%h", vv->as.shortint);
 	case VAR_TYPE_INT:
 #ifdef _WIN32
-		return itoa(vv->as.integer, string, 10);
+		*string = itoa(vv->as.integer, string, 10);
 #else
-		snprintf(string, sizeof(string), "%d", vv->as.integer);
-		return string;
+		snprintf(*string, len, "%d", vv->as.integer);
 #endif	
-	//note %f and %lf are same, since float gets promoted to double when calling printf
+		//note %f and %lf are same, since float gets promoted to double when calling printf
 	case VAR_TYPE_FLOAT:
-		snprintf(string, sizeof(string), "%f", vv->as.number);
-		return string;
+		snprintf(*string, len, "%f", vv->as.number);
 	case VAR_TYPE_DOUBLE:
-		snprintf(string, sizeof(string), "%lf", vv->as.dbl);
-		return string;
+		snprintf(*string, len, "%lf", vv->as.dbl);
 	case VAR_TYPE_CHAR:
-		snprintf(string, sizeof(string), "%c", vv->as.character);
-		return string;
+		snprintf(*string, len, "%c", vv->as.character);
 	case VAR_TYPE_NULL:
-		return "[null]";
+		*string = "[null]";
 	case VAR_TYPE_OBJECT:
 		switch (vv->as.obj->type)
 		{
 		case VT_OBJECT_BUFFER:
-			return "[managed buffer]";
+			*string = "[managed buffer]";
 		}
-		return "[object]";
+		*string = "[object]";
 	case VAR_TYPE_ARRAY:
-		return "[array]";
+		*string = "[array]";
 	}
-	return "[unhandled variable type]";
+	*string = "[unhandled variable type]";
+	return 0;
+}
+
+const char *se_vv_to_string(vm_t *vm, varval_t *vv) {
+	static char string[128] = { 0 };
+	se_vv_to_string_s(vm, vv, &string, sizeof(string));
+	return string;
 }
 
 float se_getfloat(vm_t *vm, int i) {
