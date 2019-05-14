@@ -391,14 +391,12 @@ static int se_vv_to_int(vm_t *vm, varval_t *vv) {
 	return ret;
 }
 
-int se_vv_to_string_s(vm_t *vm, varval_t *vv, char **string, size_t len) {
+const char *se_vv_to_string_s(vm_t *vm, varval_t *vv, char **string, size_t len) {
 	switch (VV_TYPE(vv)) {
 	case VAR_TYPE_INDEXED_STRING:
-		*string = se_index_to_string(vm, vv->as.stringindex);
-		break;
+		return se_index_to_string(vm, vv->as.stringindex);
 	case VAR_TYPE_STRING:
-		*string = vv->as.string;
-		break;
+		return vv->as.string;
 	case VAR_TYPE_VECTOR:
 		snprintf(*string, len, "(%f, %f, %f)", vv->as.vec[0], vv->as.vec[1], vv->as.vec[2]);
 		break;
@@ -410,7 +408,7 @@ int se_vv_to_string_s(vm_t *vm, varval_t *vv, char **string, size_t len) {
 		break;
 	case VAR_TYPE_INT:
 #ifdef _WIN32
-		*string = itoa(vv->as.integer, string, 10);
+		return itoa(vv->as.integer, *string, 10);
 #else
 		snprintf(*string, len, "%d", vv->as.integer);
 #endif	
@@ -426,24 +424,20 @@ int se_vv_to_string_s(vm_t *vm, varval_t *vv, char **string, size_t len) {
 		snprintf(*string, len, "%c", vv->as.character);
 		break;
 	case VAR_TYPE_NULL:
-		*string = "[null]";
-		break;
+		return "[null]";
 	case VAR_TYPE_OBJECT:
 		switch (vv->as.obj->type)
 		{
 		case VT_OBJECT_BUFFER:
-			*string = "[managed buffer]";
+			return "[managed buffer]";
 		}
-		*string = "[object]";
-		break;
+		return "[object]";
 	case VAR_TYPE_ARRAY:
-		*string = "[array]";
-		break;
+		return "[array]";
 	default:
-		*string = "[unhandled variable type]";
-		break;
+		return "[unhandled variable type]";
 	}
-	return 0;
+	return *string;
 }
 
 const char *se_vv_to_string(vm_t *vm, varval_t *vv) {
