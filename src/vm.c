@@ -474,8 +474,11 @@ int se_vv_to_string_s(vm_t *vm, varval_t *vv, char *str, size_t len) {
 				vt_buffer_t *vtb = (vt_buffer_t*)vv->as.obj->obj;
 				strcpy(str, vtb->data);
 			} break;
+
+			default:
+				snprintf(str, len, "%s", "[object]");
+				break;
 		}
-		snprintf(str, len, "%s", "[buffer]");
 		break;
 	case VAR_TYPE_ARRAY:
 		snprintf(str, len, "%s", "[array]");
