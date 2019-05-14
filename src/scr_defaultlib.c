@@ -873,9 +873,27 @@ int sf_exit(vm_t *vm)
 	return 0;
 }
 
+#ifdef CIDSCROPT_STANDALONE
+extern unsigned int fps_delta;
+int sf_set_fps(vm_t *vm)
+{
+	fps_delta = se_getint(vm, 0);
+	return 0;
+}
+int sf_thread_run(vm_t *vm)
+{
+	vm_run_active_threads(vm, fps_delta);
+	return 0;
+}
+#endif
+
 stockfunction_t std_scriptfunctions[] = {
 #ifdef _WIN32
 	{"set_pixel", sf_setpixel},
+#endif
+#ifdef CIDSCROPT_STANDALONE
+	{"__internal_thread_set_sleep_time", sf_set_fps},
+	//{"__internal_thread_run", sf_thread_run}, //don't use this
 #endif
 	{ "abs",sf_abs },
 	{ "sinf",sf_m_sinf },

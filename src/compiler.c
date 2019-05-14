@@ -131,7 +131,7 @@ static bool is_ident_char(int c)
 static bool pp_is_token_enabled(parser_t *pp, int t) {
 	if (!pp->enabledtokens)
 		return true;
-	for (int i = 0; pp->enabledtokens[i] != TK_EOF; ++i) {
+	for (int i = 0; pp->enabledtokens[i] && pp->enabledtokens[i] != TK_EOF; ++i) {
 		if (pp->enabledtokens[i] == t)
 			return true;
 	}
@@ -1767,6 +1767,8 @@ void kstring_push_back(kstring_t *k, int c) {
 }
 
 void kstring_add(kstring_t *k, const char *s) {
+	if (!s)
+		return;
 	size_t sz = strlen(s);
 	kstring_resize(k, sz);
 
@@ -1889,14 +1891,14 @@ int pp_locate(parser_t *pp, int token, int *invalid_tokens)
 	{
 		prev = pp->curpos;
 		int t = parser_read_next_token(pp);
-
+		//printf("t=%s,str=%s,%d\n", lex_token_strings[t],pp->string,pp->curpos);
 		bool brk = false;
 		for (int i = 0; invalid_tokens && invalid_tokens[i] != TK_EOF; ++i)
 		{
 			if (invalid_tokens[i] == t) { brk = true; break; }
 		}
-		if (brk || t == TK_EOF) break;
-
+		if (brk) break;
+		if (t == TK_EOF || !t) return -1;
 		if (t == token) {
 			ret = prev;
 			break;
@@ -1911,7 +1913,7 @@ int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines, vector *libs)
 	parser_t *pp = (parser_t*)xmalloc(sizeof(parser_t));
 	parser_init(pp);
 	pp->flags |= PARSER_FLAG_TOKENIZE_NEWLINE;
-	static int etokens[] = {TK_IDENT,TK_SHARP,TK_EOF};
+	static int etokens[] = {TK_IDENT,TK_SHARP,TK_EOF,0};
 	pp->enabledtokens = &etokens;
 	pp->scriptbuffer = buf;
 	pp->scriptbuffersize = sz;
@@ -2022,11 +2024,17 @@ int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines, vector *libs)
 
 				//take everything of the rest till newline so we can copy it
 				pp_save(pp);
-				while(1) {
+				while(1)
+				{
+					int chk = parser_read_next_token(pp); //are we hitting rock bottom yet?
+					if(chk == TK_ILLEGAL || chk == TK_EOF)
+						return pre_err(pp, "unexpected end of file at %d (%s)!", pp->curpos, &pp->scriptbuffer[pp->curpos]);
+					pp_goto(pp, sav);
+
 					int bs = pp_locate(pp, TK_BACKSLASH, NULL);
 					int nl = pp_locate(pp, TK_NEWLINE, NULL);
 					if (bs == -1 && nl == -1)
-						return pre_err(pp, "unexpected end of file!");
+						break;// return pre_err(pp, "macro definition: %s, unexpected end of file at %d (%s)! (bs=%d,nl=%d)", pp->string, pp->curpos, &pp->scriptbuffer[pp->curpos > 100 ? pp->curpos - 100 : pp->curpos], bs, nl);
 					int low = nl;
 					if (bs != -1 && bs < nl)
 						low = bs;

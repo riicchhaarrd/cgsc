@@ -17,18 +17,24 @@ void signal_int(int parm) {
 	vm->is_running = false;
 }
 
-#define FPS_DELTA (1000/20)
+//#define FPS_DELTA (1000 / 20)
+volatile unsigned int fps_delta = (1000 / 20);
+
 int main(int argc, char **argv) {
 	//SDL_Init(SDL_INIT_VIDEO);
 
-#if 0
+#if 1
 	if (argc < 2) {
 		printf("No script specified.\n");
 		goto _wait_and_exit;
 	}
 	const char *filename = argv[1];
 #else
-	const char *filename = "../examples/bench.gcx";
+	//const char *filename = "../examples/bench.gcx";
+	const char *filename = "C:/Users/R/Desktop/ore/deps/scripts/sdl.gsc";
+#ifdef _WIN32
+	SetCurrentDirectoryA("C:/Users/R/Desktop/ore/deps/scripts/");
+#endif
 #endif
 #ifdef _WIN32
 	LARGE_INTEGER freq;
@@ -58,8 +64,8 @@ int main(int argc, char **argv) {
 	vm_exec_thread(vm, "main", 0);
 
 	while (vm_get_num_active_threadrunners(vm) > 0) {
-		vm_run_active_threads(vm, FPS_DELTA);
-		sys_sleep(FPS_DELTA);
+		vm_run_active_threads(vm, fps_delta);
+		sys_sleep(fps_delta);
 	}
 	vm_free(vm);
 #ifdef _WIN32
@@ -71,8 +77,8 @@ int main(int argc, char **argv) {
 #endif
 _wait_and_exit:
 #ifdef _WIN32
-	printf("Press [ENTER] to continue.\n");
-	getchar();
+	//printf("Press [ENTER] to continue.\n");
+	//getchar();
 #endif
 	return 0;
 }

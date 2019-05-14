@@ -193,14 +193,23 @@ scan:
 			while ((c = nxt) != '\n' && c)
 				;
 		}
-		else
+		else if(peek == '*')
 		{
+			++ps->pos;
 		repeat:
-			while ((c = nxt) != '*' && c)
-				;
-			if (pk != '/')
-				goto repeat;
+			while (1)
+			{
+				int nx = nxt;
+				if (!nx) break;
+				if (nx == '*' && pk == '/')
+				{
+					++ps->pos;
+					break;
+				}
+			}
 		}
+		else
+			return TOKEN_ILLEGAL;
 		goto scan;
 	} break;
 	default:

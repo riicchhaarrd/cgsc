@@ -35,6 +35,8 @@
 #include <dlfcn.h>
 #endif
 
+#include "asm.h"
+
 int vv_integer_internal_size(varval_t *vv)
 {
 	if (VV_TYPE(vv) == VAR_TYPE_NULL)
@@ -320,19 +322,19 @@ static void print_registers(vm_t *vm) {
 		printf("%s => %d\n", e_vm_reg_names[i], vm_registers[i]);
 }
 
-static uint8_t read_byte(vm_t *vm) {
+static uint8_t VM_INLINE read_byte(vm_t *vm) {
 	uint8_t op = vm->program[vm_registers[REG_IP]];
 	++vm_registers[REG_IP];
 	return op;
 }
 
-static int read_int(vm_t *vm) {
+static int VM_INLINE read_int(vm_t *vm) {
 	int i = *(int*)(vm->program + vm_registers[REG_IP]);
 	vm_registers[REG_IP] += sizeof(int);
 	return i;
 }
 
-static float read_float(vm_t *vm) {
+static float VM_INLINE read_float(vm_t *vm) {
 	float f = *(float*)(vm->program + vm_registers[REG_IP]);
 	vm_registers[REG_IP] += sizeof(float);
 	return f;
@@ -878,6 +880,31 @@ void vt_buffer_deconstructor(vm_t *vm, vt_buffer_t *vtb)
 	//if(!vtb->managed)
 		free(vtb);
 }
+
+#if 0
+//TODO: later
+static VM_INLINE int vm_jit(vm_t *vm, int instr, unsigned char *asm)
+{
+	//FINISH THIS SOMEDAY
+	switch (instr)
+	{
+	case OP_RET:
+		ret(asm, 0);
+		break;
+	case OP_PUSH:
+	{
+		int imm = read_int(vm);
+		push_imm(asm, imm);
+	} break;
+	case OP_PUSH_STRING:
+		push_imm(asm, vm->istringlist[read_int(vm)].string);
+		break;
+	case OP_LOAD:
+		//TODO:
+		break;
+	}
+}
+#endif
 
 //NOTE
 //we're using a default primitive types use copy instead of reference so any time that stack_pop is used, free the value (try to when the refs are <= 0)
@@ -2554,7 +2581,7 @@ void vm_free(vm_t *vm) {
 				}
 				continue;
 			}
-			printf("freeing leftover var %02X (%s)\n", vv, VV_TYPE_STRING(vv));
+			//printf("freeing leftover var %02X (%s)\n", vv, VV_TYPE_STRING(vv));
 			//se_vv_free(vm, vv);
 			se_vv_remove_reference(vm, vv);
 		}
