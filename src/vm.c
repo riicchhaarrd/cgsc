@@ -391,59 +391,127 @@ static int se_vv_to_int(vm_t *vm, varval_t *vv) {
 	return ret;
 }
 
-const char *se_vv_to_string_s(vm_t *vm, varval_t *vv, char **string, size_t len) {
+//returning 0 means usually an size of 128 -> 2048 should be sufficient or its a internal conversion from int to string format etc
+int se_vv_get_string_length(vm_t *vm, varval_t *vv)
+{
 	switch (VV_TYPE(vv)) {
 	case VAR_TYPE_INDEXED_STRING:
-		return se_index_to_string(vm, vv->as.stringindex);
+		return strlen(se_index_to_string(vm, vv->as.stringindex));
 	case VAR_TYPE_STRING:
-		return vv->as.string;
+		return strlen(vv->as.string);
 	case VAR_TYPE_VECTOR:
-		snprintf(*string, len, "(%f, %f, %f)", vv->as.vec[0], vv->as.vec[1], vv->as.vec[2]);
-		break;
 	case VAR_TYPE_LONG:
-		snprintf(*string, len, "%lld", vv->as.longint);
-		break;
 	case VAR_TYPE_SHORT:
-		snprintf(*string, len, "%h", vv->as.shortint);
-		break;
 	case VAR_TYPE_INT:
-#ifdef _WIN32
-		return itoa(vv->as.integer, *string, 10);
-#else
-		snprintf(*string, len, "%d", vv->as.integer);
-#endif	
-		//note %f and %lf are same, since float gets promoted to double when calling printf
-		break;
 	case VAR_TYPE_FLOAT:
-		snprintf(*string, len, "%f", vv->as.number);
-		break;
 	case VAR_TYPE_DOUBLE:
-		snprintf(*string, len, "%lf", vv->as.dbl);
-		break;
 	case VAR_TYPE_CHAR:
-		snprintf(*string, len, "%c", vv->as.character);
-		break;
 	case VAR_TYPE_NULL:
-		return "[null]";
+	case VAR_TYPE_ARRAY:
+		return 0;
 	case VAR_TYPE_OBJECT:
 		switch (vv->as.obj->type)
 		{
 		case VT_OBJECT_BUFFER:
-			return "[managed buffer]";
+		{
+			vt_buffer_t *vtb = (vt_buffer_t*)vv->as.obj->obj;
+			return strlen(vtb->data);
 		}
-		return "[object]";
-	case VAR_TYPE_ARRAY:
-		return "[array]";
-	default:
-		return "[unhandled variable type]";
+		}
+		return 0;
 	}
-	return *string;
+	return 0; //unhandled
 }
 
-const char *se_vv_to_string(vm_t *vm, varval_t *vv) {
-	static char string[128] = { 0 };
-	se_vv_to_string_s(vm, vv, &string, sizeof(string));
-	return string;
+//function expects that the len given does match the string kind of -> strcpy unsafe
+int se_vv_to_string_s(vm_t *vm, varval_t *vv, char *str, size_t len) {
+	switch (VV_TYPE(vv)) {
+	//kinda didn't wanna resort to using snprintf, and just returning raw ptrs, but oh well here we are cuz we copy them now etc
+	case VAR_TYPE_INDEXED_STRING:
+	{
+		char *ptr = se_index_to_string(vm, vv->as.stringindex);
+		if (!ptr)
+			ptr = "";
+		strcpy(str, ptr);
+	} break;
+	case VAR_TYPE_STRING:
+	{
+		char *ptr = vv->as.string;
+		if (!ptr)
+			ptr = "";
+		strcpy(str, ptr);
+	} break;
+	case VAR_TYPE_VECTOR:
+		snprintf(str, len, "(%f, %f, %f)", vv->as.vec[0], vv->as.vec[1], vv->as.vec[2]);
+		break;
+	case VAR_TYPE_LONG:
+		snprintf(str, len, "%lld", vv->as.longint);
+		break;
+	case VAR_TYPE_SHORT:
+		snprintf(str, len, "%h", vv->as.shortint);
+		break;
+	case VAR_TYPE_INT:
+		snprintf(str, len, "%d", vv->as.integer);
+		//note %f and %lf are same, since float gets promoted to double when calling printf
+		break;
+	case VAR_TYPE_FLOAT:
+		snprintf(str, len, "%f", vv->as.number);
+		break;
+	case VAR_TYPE_DOUBLE:
+		snprintf(str, len, "%lf", vv->as.dbl);
+		break;
+	case VAR_TYPE_CHAR:
+		snprintf(str, len, "%c", vv->as.character);
+		break;
+	case VAR_TYPE_NULL:
+		snprintf(str, len, "%s", "[null]");
+		break;
+	case VAR_TYPE_OBJECT:
+		switch (vv->as.obj->type)
+		{
+			case VT_OBJECT_BUFFER:
+			{
+				vt_buffer_t *vtb = (vt_buffer_t*)vv->as.obj->obj;
+				strcpy(str, vtb->data);
+			} break;
+		}
+		snprintf(str, len, "%s", "[buffer]");
+		break;
+	case VAR_TYPE_ARRAY:
+		snprintf(str, len, "%s", "[array]");
+		break;
+	default:
+		snprintf(str, len, "%s", "[unhandled variable type]");
+		break;
+	}
+	return 0;
+}
+
+const char *se_vv_to_string(vm_t *vm, varval_t *vv)
+{
+#if 0
+	static char test[128] = { 0 };
+	se_vv_to_string_s(vm, vv, test, sizeof(test));
+	return test;
+#endif
+
+	if (vm->thrunner == NULL)
+	{
+		printf("thrunner NULL fatal error\n");
+		getchar();
+		exit(0);
+	}
+	char *p = NULL;
+	int len = se_vv_get_string_length(vm,vv);
+	if (len == 0)
+		len = 256; //should be enough
+	//alloc new buffer with dynamic size
+	p = (char*)vm_mem_alloc(vm, len + 1); //for \0
+	memset(p, 0, len);
+	se_vv_to_string_s(vm, vv, p, len);
+	//printf("type=%s, p=%s, len=%d\n", VV_TYPE_STRING(vv), p, len);
+	vector_add(&vm->thrunner->strings, p);
+	return p;
 }
 
 float se_getfloat(vm_t *vm, int i) {
@@ -454,7 +522,7 @@ float se_getfloat(vm_t *vm, int i) {
 
 const char *se_getstring(vm_t *vm, int i) {
 	varval_t *vv = se_argv(vm, i);
-	return se_vv_to_string(vm,vv);
+	return se_vv_to_string(vm, vv);
 }
 
 int se_getint(vm_t *vm, int i) {
@@ -1966,6 +2034,24 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 			vm_registers[REG_IP] = ret_addr;
 
 			stack_push_vv(vm, retval);
+			//clear all threadrunner strings
+			if (vm->thrunner == NULL)
+			{
+				printf("fatal error thrunner NULL\n");
+				getchar(); //shouldnt happen
+				exit(0);
+			}
+			else
+			{
+#if 1
+				for (int i = vector_count(&vm->thrunner->strings); i--;)
+				{
+					const char *dstr = (const char*)vector_get(&vm->thrunner->strings, i);
+					vm_mem_free(vm, dstr);
+				}
+				vector_free(&vm->thrunner->strings);
+#endif
+			}
 		} break;
 
 		default: {
@@ -2370,6 +2456,7 @@ vm_t *vm_create(const char *program, int programsize) {
 		vm_thread_t *thr = &vm->threadrunners[i];
 		thr->stacksize = VM_STACK_SIZE;
 		thr->stack = (intptr_t*)vm_mem_alloc(vm, thr->stacksize * sizeof(intptr_t));
+		vector_init(&thr->strings);
 	}
 	vm->numthreadrunners=0;
 	vm->thrunner = NULL;

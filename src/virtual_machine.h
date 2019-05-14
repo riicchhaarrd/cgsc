@@ -49,6 +49,7 @@ struct vm_thread_s {
 	int wait;
 	bool active;
 	//char string[512]; //used for getting string value types n stuff
+	vector strings;
 };
 
 typedef intptr_t vm_function_t;
