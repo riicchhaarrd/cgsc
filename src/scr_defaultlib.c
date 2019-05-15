@@ -18,6 +18,7 @@
 #include <dlfcn.h>
 #include <sys/mman.h>
 #endif
+#include "parser.h"
 //#pragma comment(lib, "SDL2.lib")
 #ifdef _WIN32
 static bool wsa_init = false;
@@ -887,6 +888,39 @@ int sf_thread_run(vm_t *vm)
 }
 #endif
 
+int sf_eval(vm_t *vm)
+{
+	const char *code = se_getstring(vm, 0);
+	char *str = vm_mem_alloc(vm,strlen(code) + 100);
+
+	snprintf(str, strlen(code) + 100, "main()\n{\n%s\n}", code);
+
+	char *script;
+	int script_size;
+	if (parser_compile_string(str, &script, &script_size)) {
+		printf("Failed compiling '%s'.\n", str);
+		vm_mem_free(vm, str);
+		return 0;
+	}
+	vm_mem_free(vm, str);
+	vm_t *nvm = vm_create(script, script_size);
+	free(script);
+	vm_exec_thread(nvm, "main", 0);
+	varval_t *ret_val = stack_pop_vv(nvm);
+	varval_t *copy = se_vv_copy(vm, ret_val);
+
+#if 1
+	while (vm_get_num_active_threadrunners(nvm) > 0) {
+		vm_run_active_threads(nvm, fps_delta);
+		sys_sleep(fps_delta);
+	}
+#endif
+	vm_free(nvm);
+
+	stack_push_vv(vm, copy);
+	return 1;
+}
+
 stockfunction_t std_scriptfunctions[] = {
 #ifdef _WIN32
 	{"set_pixel", sf_setpixel},
@@ -898,7 +932,7 @@ stockfunction_t std_scriptfunctions[] = {
 	{ "abs",sf_abs },
 	{ "sinf",sf_m_sinf },
 	{"cosf",sf_m_cosf},
-
+	{"eval", sf_eval},
 	{"exit", sf_exit},
 	{ "buffer", sf_buffer },
 	{ "set_ffi_lib", sf_set_ffi_lib },
