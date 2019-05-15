@@ -1745,16 +1745,17 @@ static int parser_block(parser_t *pp, int start, int end) {
 
 int read_text_file(const char *filename, char **buf, int *filesize) {
 #if 1
-	FILE *fp = fopen(filename, "r");
+	FILE *fp = fopen(filename, "rb");
 	if (fp == NULL)
 		return 1;
 	fseek(fp, 0, SEEK_END);
 	*filesize = ftell(fp);
 	rewind(fp);
-	*buf = (char*)malloc(*filesize + 1);
-	size_t res = fread(*buf, 1, *filesize, fp);
-	*buf[*filesize] = '\0';
+	char *p = (char*)malloc(*filesize + 1);
+	size_t res = fread(p, 1, *filesize, fp);
 	fclose(fp);
+	p[*filesize] = '\0';
+	*buf = p;
 	return 0;
 #endif
 	return 0;
