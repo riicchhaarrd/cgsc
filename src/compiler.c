@@ -1752,8 +1752,8 @@ int read_text_file(const char *filename, char **buf, int *filesize) {
 	*filesize = ftell(fp);
 	rewind(fp);
 	*buf = (char*)malloc(*filesize + 1);
-	memset(*buf, 0, *filesize + 1);
 	size_t res = fread(*buf, 1, *filesize, fp);
+	*buf[*filesize] = '\0';
 	fclose(fp);
 	return 0;
 #endif

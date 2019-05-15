@@ -406,8 +406,8 @@ int sf_fwritevalue(vm_t *vm) {
 
 int sf_read_text_file(vm_t *vm) {
 	const char *filename = se_getstring(vm, 0);
-	int filesize;
-	char *buf;
+	int filesize = 0;
+	char *buf = NULL;
 	if (!read_text_file(filename, &buf, &filesize)) {
 		se_addstring(vm, buf);
 		free(buf);
