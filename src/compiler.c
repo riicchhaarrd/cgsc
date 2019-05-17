@@ -1565,8 +1565,17 @@ static int parser_statement(parser_t *pp) {
 
 		do {
 			int from_jmp_relative = pp->program_counter;
-			if (parser_expression(pp))
-				return 1;
+			
+			if (pp_accept(pp, TK_NOT)) {
+				if (parser_expression(pp))
+					return 1;
+				program_add_opcode(pp, OP_NOT);
+			}
+			else
+			{
+				if (parser_expression(pp))
+					return 1;
+			}
 
 			if (pp_accept(pp, TK_NOTEQUAL) || pp_accept(pp, TK_GEQUAL) || pp_accept(pp, TK_LEQUAL) || pp_accept(pp, TK_EQUALS) || pp_accept(pp, TK_LESS) || pp_accept(pp, TK_GREATER)) {
 				int ctkn = pp->token;

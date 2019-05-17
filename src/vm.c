@@ -1473,15 +1473,12 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 		//SPECIFY_OP_EQUALITY(OP_NEQ,)
 
 		case OP_EQ: { 
-			vm_registers[REG_COND] = 0; 
 			varval_t *b = stack_pop_vv(vm); 
 			varval_t *a = stack_pop_vv(vm); 
 			if (VV_IS_STRING(b) || VV_IS_STRING(a)) { 
 				const char *sb = se_vv_to_string(vm, b); 
 				const char *sa = se_vv_to_string(vm, a); 
-				if (!(strcmp(sb, sa))) { 
-					vm_registers[REG_COND] = 1; 
-				} 
+				vm_registers[REG_COND] = !(strcmp(sb, sa));
 			} else {
 #if 0
 				int fb = se_vv_to_int(vm, b); 
@@ -1489,23 +1486,19 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 				if (!(fb != fa)) 
 					vm_registers[REG_COND] = 1;
 #endif
-				if (vv_icmp(vm, a, b))
-					vm_registers[REG_COND] = 1;
+				vm_registers[REG_COND] = vv_icmp(vm, a, b);
 			} 
 			se_vv_free(vm, b); 
 			se_vv_free(vm, a); 
 		} break;
 		
 		case OP_NEQ: { 
-			vm_registers[REG_COND] = 0; 
 			varval_t *b = stack_pop_vv(vm); 
 			varval_t *a = stack_pop_vv(vm); 
 			if (VV_IS_STRING(b) || VV_IS_STRING(a)) { 
 				const char *sb = se_vv_to_string(vm, b); 
 				const char *sa = se_vv_to_string(vm, a); 
-				if ((strcmp(sb, sa))) { 
-					vm_registers[REG_COND] = 1; 
-				} 
+				vm_registers[REG_COND] = strcmp(sb, sa);
 			} else {
 #if 0
 				int fb = se_vv_to_int(vm, b); 
@@ -1513,8 +1506,7 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 				if (!(fb == fa)) 
 					vm_registers[REG_COND] = 1;
 #endif
-				if (!vv_icmp(vm, a, b))
-					vm_registers[REG_COND] = 1;
+				vm_registers[REG_COND] = !vv_icmp(vm, a, b);
 			} 
 			se_vv_free(vm, b); 
 			se_vv_free(vm, a); 
