@@ -1665,8 +1665,12 @@ static int parser_statement(parser_t *pp) {
 			{
 				*(int*)(pp->program + jump->from) = OP_JUMP_ON_FALSE;
 				*(int*)(pp->program + jump->from + 1) = (end_cond_pos - jump->from);
-				if(vector_count(&jumps)==1 || (nxtjmp&&nxtjmp->type==TK_OR_OR))
-					*(int*)(pp->program + jump->jmprel + 1) = (codeblockpos-jump->jmprel);
+				if (vector_count(&jumps) == 1 || (nxtjmp&&nxtjmp->type == TK_OR_OR))
+				{
+					if(nxtjmp)
+					*(int*)(pp->program + jump->from + 1) = (nxtjmp->to - jump->from);
+					*(int*)(pp->program + jump->jmprel + 1) = (codeblockpos - jump->jmprel);
+				}
 				else
 					*(int*)(pp->program + jump->jmprel + 1) = 5;
 			}

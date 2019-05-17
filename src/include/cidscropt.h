@@ -141,30 +141,32 @@ typedef struct {
 
 typedef double vm_scalar_t;
 
+typedef union {
+	double dbl;
+	float flt;
+	float number;
+
+	char character;
+	int integer;
+	short shortint;
+	long long longint;
+
+	//intptr_t ptr;
+	char *string;
+	void *ptr;
+	vt_object_t *obj;
+	int index; //more generic
+	int stringindex;
+	vm_scalar_t vec[3]; //largest imo
+} varval_internal_representation_t;
+
 struct varval_s {
 	e_var_types_t type;
 	int flags, refs;
 #ifdef MEMORY_DEBUG
 	char debugstring[256];
 #endif
-	union {
-		double dbl;
-		float flt;
-		float number;
-
-		char character;
-		int integer;
-		short shortint;
-		long long longint;
-
-		//intptr_t ptr;
-		char *string;
-		void *ptr;
-		vt_object_t *obj;
-		int index; //more generic
-		int stringindex;
-		vm_scalar_t vec[3]; //largest imo
-	} as;
+	varval_internal_representation_t as;
 };
 
 #define VF_LOCAL (1<<0)
