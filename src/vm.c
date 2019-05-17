@@ -2023,6 +2023,12 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 					if (vv == retval) continue; //dont free the return value rofl
 					se_vv_free(vm, vv);
 #endif
+					if (vv == retval)
+					{
+						--vv->refs;
+						//printf("retval = %02X\n", retval);
+						continue;
+					}
 					se_vv_remove_reference(vm, vv);
 				}
 			}
