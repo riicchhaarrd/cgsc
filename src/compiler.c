@@ -554,6 +554,8 @@ static void parser_init(parser_t *pp) {
 
 	memset(pp, 0, sizeof(parser_t));
 	array_init(&pp->structs, cstruct_t);
+	pp->logfile = NULL;
+	//pp->logfile = fopen("parser.log", "w");
 
 	pp->execute = true;
 	pp->curpos = 0;
@@ -577,6 +579,9 @@ static void parser_cleanup(parser_t *pp) {
 	//xfree(pp->scriptbuffer);
 	pp->scriptbuffer = NULL;
 
+	if (pp->logfile)
+		fclose(pp->logfile);
+
 	for (int i = 0; i < MAX_ISTRINGS; i++)
 		parser_free_indexed_string(pp, i);
 	array_free(&pp->structs);
@@ -591,7 +596,9 @@ static void program_add_opcode(parser_t *pp, uint8_t opcode) {
 
 	pp->program[pp->program_counter++] = opcode;
 	const char *opcode_str = opcode < OP_END_OF_LIST ? e_opcodes_strings[opcode] : "[not opcode]";
-	//printf("program_add_opcode(%s) => %d (0x%x)\n", opcode_str, opcode, opcode);
+	if(pp->logfile)
+		fprintf(pp->logfile, "\t%d: %s\n", pp->program_counter - 1, opcode_str);
+	//fprintf(pp->logfile, "program_add_opcode(%s) => %d (0x%x)\n", opcode_str, opcode, opcode);
 }
 
 static void program_add_int(parser_t *pp, uint32_t i) {
@@ -607,7 +614,8 @@ static void program_add_int(parser_t *pp, uint32_t i) {
 	*(int*)(pp->program + pp->program_counter) = i;
 	pp->program_counter += sizeof(int);
 #endif
-	//printf("program_add_int(%d) => %x, %x, %x, %x\n", i, i & 0xff, (i>>8)&0xff,(i>>16)&0xff,(i>>24)&0xff);
+	//if(pp->logfile)
+	//fprintf(pp->logfile, "program_add_int(%d) => %x, %x, %x, %x\n", i, i & 0xff, (i>>8)&0xff,(i>>16)&0xff,(i>>24)&0xff);
 }
 
 static void program_add_float(parser_t *pp, float i) {
@@ -1452,6 +1460,8 @@ accept_ident:
 
 					pp->current_segment = &pp->code_segments[++pp->code_segment_size];
 					pp->current_segment->original_loc = pp->program_counter;
+					if(pp->logfile)
+						fprintf(pp->logfile, "[%s]\n", id);
 					snprintf(pp->current_segment->id, sizeof(pp->current_segment->id), "%s", id);
 
 					int start = pp->curpos;
@@ -1477,6 +1487,20 @@ accept_ident:
 
 	return 0;
 }
+
+static void parser_log(parser_t *pp, const char *s)
+{
+	if (pp->logfile)
+		fprintf(pp->logfile, "%s", s);
+}
+
+typedef struct
+{
+	int from;
+	int to;
+	int jmprel;
+	int type;
+} cond_jump_t;
 
 static int parser_statement(parser_t *pp) {
 	bool is_thread_call = false;
@@ -1534,7 +1558,13 @@ static int parser_statement(parser_t *pp) {
 
 		int cond_pos = pp->program_counter;
 
+		int which = TK_OR_OR; //if it's a single statement e.g if(a > 10) then it's an or case
+
+		vector jumps;
+		vector_init(&jumps);
+
 		do {
+			int from_jmp_relative = pp->program_counter;
 			if (parser_expression(pp))
 				return 1;
 
@@ -1562,11 +1592,28 @@ static int parser_statement(parser_t *pp) {
 				program_add_opcode(pp, OP_GEQUAL);
 			}
 
-		} while (pp_accept(pp, TK_AND_AND) || pp_accept(pp, TK_OR_OR));
+			cond_jump_t *jmp = (cond_jump_t*)xmalloc(sizeof(cond_jump_t));
+			jmp->from = pp->program_counter;
+			jmp->to = from_jmp_relative; //tmp
+			jmp->type = which;
+			program_add_opcode(pp, OP_JUMP_ON_FALSE);
+			program_add_short(pp, 0); //temporarily
 
-		program_add_opcode(pp, OP_JUMP_ON_FALSE);
-		int from_jmp_relative = pp->program_counter;
-		program_add_short(pp, 0); //temporarily
+			jmp->jmprel = pp->program_counter;
+			program_add_opcode(pp, OP_JUMP_RELATIVE); //incase we do get through we just jump to the actual code (TODO: fix this)
+			program_add_short(pp, 0); //temporarily
+
+			vector_add(&jumps, jmp);
+			if (pp_accept(pp, TK_OR_OR))
+				which = TK_OR_OR;
+			else if (pp_accept(pp, TK_AND_AND))
+				which = TK_AND_AND;
+			else
+				break;
+
+		} while (
+			1//pp_accept(pp, TK_AND_AND) || pp_accept(pp, TK_OR_OR)
+			);
 
 		int tmp_at_this_loc = 0;
 		if (tk == TK_R_FOR) {
@@ -1580,6 +1627,7 @@ static int parser_statement(parser_t *pp) {
 
 		pp_expect(pp, TK_RPAREN);
 
+		int codeblockpos = pp->program_counter;
 		if (pp_accept(pp, TK_LBRACE)) {
 			if (parser_encapsulated_block(pp))
 				goto unexpected_tkn;
@@ -1597,17 +1645,44 @@ static int parser_statement(parser_t *pp) {
 		}
 
 
+		int end_cond_pos = pp->program_counter;
 		if (tk == TK_WHILE || tk == TK_R_FOR) {
 			program_add_opcode(pp, OP_JUMP_RELATIVE);
 			program_add_short(pp, (cond_pos - pp->program_counter - sizeof(int)));
+			if(pp->logfile)
+				fprintf(pp->logfile, "JUMP RELATIVE (WHILE/FOR) from %d to %d\n", pp->program_counter, cond_pos);
+			end_cond_pos += 5;
 		}
 
-		int end_cond_pos = pp->program_counter;
-		*(int*)(pp->program + from_jmp_relative) = (end_cond_pos - from_jmp_relative - sizeof(int));
-
+		for (int i = 0; i < vector_count(&jumps); i++)
+		{
+			cond_jump_t *nxtjmp = NULL;
+			if (i + 1 < vector_count(&jumps))
+				nxtjmp = (cond_jump_t*)vector_get(&jumps, i + 1);
+			cond_jump_t *jump = (cond_jump_t*)vector_get(&jumps, i);
+			//end jump pos for last when doing a &&
+			int jmp_pos = (end_cond_pos - jump->from);
+			{
+				*(int*)(pp->program + jump->from) = OP_JUMP_ON_FALSE;
+				*(int*)(pp->program + jump->from + 1) = (end_cond_pos - jump->from);
+				if(vector_count(&jumps)==1 || (nxtjmp&&nxtjmp->type==TK_OR_OR))
+					*(int*)(pp->program + jump->jmprel + 1) = (codeblockpos-jump->jmprel);
+				else
+					*(int*)(pp->program + jump->jmprel + 1) = 5;
+			}
+			*(int*)(pp->program + jump->from + 1) -= 5;
+			*(int*)(pp->program + jump->jmprel + 1) -= 5;
+			if (pp->logfile)
+			{
+				fprintf(pp->logfile, "JUMP %d -> %d\n", jump->from, jmp_pos - 5 + jump->from);
+				fprintf(pp->logfile, "JUMP RELATIVE %d -> %d\n", jump->from + 1 + 4, *(int*)(pp->program + jump->jmprel + 1) + jump->jmprel);
+			}
+			xfree(jump);
+		}
+		vector_free(&jumps);
 		if (pp_accept(pp, TK_R_ELSE) && tk == TK_IF) {
 			program_add_opcode(pp, OP_JUMP_ON_TRUE);
-			from_jmp_relative = pp->program_counter;
+			int from_jmp_relative = pp->program_counter;
 			program_add_short(pp, 0); //temporarily
 			if (pp_accept(pp, TK_LBRACE)) {
 				if (parser_encapsulated_block(pp))

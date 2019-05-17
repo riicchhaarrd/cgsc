@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
 	LARGE_INTEGER start;
 	QueryPerformanceCounter(&start);
 
-	printf("] Starting benchmark for file '%s'\n", filename);
+	//printf("] Starting benchmark for file '%s'\n", filename);
 #endif
 	srand(time(0));
 	signal(SIGINT, signal_int);
@@ -73,7 +73,7 @@ int main(int argc, char **argv) {
 	QueryPerformanceCounter(&end);
 
 	double interval = (double)(end.QuadPart - start.QuadPart) / freq.QuadPart;
-	printf("Finished in %g seconds\n", interval);
+	//printf("Finished in %g seconds\n", interval);
 #endif
 _wait_and_exit:
 #ifdef _WIN32

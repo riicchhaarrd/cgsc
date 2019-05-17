@@ -1436,11 +1436,9 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 
 #define SPECIFY_OP_SIMILAR_COND(SPECIFIED_OPERATOR, MATH_OP) \
 	case SPECIFIED_OPERATOR: { \
-		vm_registers[REG_COND] = 0; \
 		vm_scalar_t b = stack_pop_scalar(vm); \
 		vm_scalar_t a = stack_pop_scalar(vm); \
-		if (a MATH_OP b) \
-			vm_registers[REG_COND] = 1; \
+		vm_registers[REG_COND] = (a MATH_OP b); \
 	} break;
 
 
