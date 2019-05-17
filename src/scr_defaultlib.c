@@ -891,21 +891,32 @@ int sf_thread_run(vm_t *vm)
 int sf_eval(vm_t *vm)
 {
 	const char *code = se_getstring(vm, 0);
-	char *str = vm_mem_alloc(vm,strlen(code) + 100);
-
-	snprintf(str, strlen(code) + 100, "main()\n{\n%s\n}", code);
+	//char *str = vm_mem_alloc(vm,strlen(code) + 100);
+	//snprintf(str, strlen(code) + 100, "main()\n{\n%s\n}", code);
+	char *str = code;
 
 	char *script;
 	int script_size;
 	if (parser_compile_string(str, &script, &script_size)) {
 		printf("Failed compiling '%s'.\n", str);
-		vm_mem_free(vm, str);
+		//vm_mem_free(vm, str);
 		return 0;
 	}
-	vm_mem_free(vm, str);
+	//vm_mem_free(vm, str);
 	vm_t *nvm = vm_create(script, script_size);
 	free(script);
-	vm_exec_thread(nvm, "main", 0);
+
+	varval_t *arr = se_createarray(nvm);
+	for (int i = 1; i < se_argc(vm); ++i)
+	{
+		const char *s = se_getstring(vm, i);
+		se_addstring(nvm, s);
+		varval_t *av = (varval_t*)stack_pop(nvm);
+		se_vv_set_field(nvm, arr, i - 1, av);
+	}
+	stack_push_vv(nvm, arr);
+
+	vm_exec_thread(nvm, "main", 1);
 	varval_t *ret_val = stack_pop_vv(nvm);
 	varval_t *copy = se_vv_copy(vm, ret_val);
 
