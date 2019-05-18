@@ -1,6 +1,9 @@
 //you still need to include or define the macros that are win32 specific won't do it here or include because they're probably copyrighted
+#pragma comment(lib, "kernel32.dll")
+#pragma comment(lib, "user32.dll")
+#pragma comment(lib, "msvcrt.dll")
+
 main() {
-	u32();
 	hwnd = FindWindowA(NULL, "Calculator");
 	//SetWindowTextA(hwnd, "XDXDXDXDXD");
 	if(hwnd == 0) {
@@ -9,7 +12,6 @@ main() {
 	pid = (int)0;
 	GetWindowThreadProcessId(hwnd, &pid);
 	printf("pid=%\n",pid);
-	k32();
 	
 	handle = OpenProcess(PROCESS_VM_READ, 0, pid);
 	if(handle == 0) {
@@ -21,6 +23,5 @@ main() {
 	address = 0x002F1C2C;
 	ReadProcessMemory(handle,address,&value,sizeof(value),0);
 	printf("value = %\n",value);
-	std();
 	$printf("w = %02X\n",hwnd);
 }

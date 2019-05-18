@@ -1,6 +1,9 @@
 #include <test.h>
 #include <winuser.h>
 #include <winnt.h>
+#pragma comment(lib, "user32.dll")
+#pragma comment(lib, "kernel32.dll")
+#pragma comment(lib, "msvcrt.dll")
 
 typedef struct tagPOINT
 {
@@ -41,12 +44,9 @@ typedef struct tagMOUSEINPUT {
 void left_click()
 {
 	mi = new MOUSEINPUT;
-	std();
 	memset(mi,0,mi.size);
 	mi->type = INPUT_MOUSE;
 	mi->dwFlags = MOUSEEVENTF_LEFTDOWN;
-	
-	u32();
 	
 	SendInput(1, mi, mi.size);
 	
@@ -58,7 +58,6 @@ void left_click()
 main()
 {
 	printf("1\n");
-	u32();
 	while(1==1)
 	{
 		click=false;

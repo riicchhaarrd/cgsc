@@ -1,9 +1,7 @@
-lib() { set_ffi_lib("lib/lib.dll"); }
+#pragma comment(lib, "lib/lib.dll")
 
 main()
 {
-lib();
-
 s = (string)$welcome_message();
 printf("%\n",s);
 

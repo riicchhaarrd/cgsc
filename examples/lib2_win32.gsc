@@ -1,5 +1,5 @@
 #include <test.h>
-lib() { set_ffi_lib("lib/lib.dll"); }
+#pragma comment(lib, "lib/lib.dll")
 
 typedef struct
 {
@@ -9,7 +9,6 @@ typedef struct
 
 main()
 {
-	lib();
 	
 	q = (msg_t)get_message();
 	

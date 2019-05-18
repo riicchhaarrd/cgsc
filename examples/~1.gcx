@@ -1,6 +1,0 @@
-#include <test.h>
-main()
-{
-	std();
-	$printf("test\n");
-}

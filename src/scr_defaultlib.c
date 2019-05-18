@@ -740,7 +740,7 @@ int vm_do_jit(vm_t *vm, vm_ffi_lib_func_t *lf)
 	//char *jit = malloc(2000);
 
 	//printf("jit loc = %02X\n", jit);
-	int j = 0;
+	//int j = 0;
 	memset(buf, 0x90, page_size);
 
 #if 1
@@ -748,15 +748,63 @@ int vm_do_jit(vm_t *vm, vm_ffi_lib_func_t *lf)
 	mov(&jit, REG_EBP, REG_ESP);
 #endif
 	//sub_imm(&jit, REG_ESP, 0x12);
+	//sub_imm(&jit, REG_ESP, 0x10);
+
+	int sc = 0; //stack cleanup
 
 	//jit[j++] = 0xcc; //int 3
+	//emit(&jit, 0xcd); //int 3
+	//emit(&jit, 0x3);
+
+	int typecount[VAR_TYPE_NULL + 1] = { 0 };
+	int tcp[VAR_TYPE_NULL + 1] = { 0 };
+
 	int numargs = se_argc(vm);
+	for (int i = 0; i < numargs; i++)
+	{
+		varval_t *arg = se_argv(vm, numargs - i - 1);
+		if (!VV_IS_POINTER(arg))
+			++typecount[VV_TYPE(arg)];
+	}
+	sub_imm(&jit, REG_ESP, typecount[VAR_TYPE_FLOAT] * sizeof(double));
+	double *ds = (double*)vm_mem_alloc(vm, typecount[VAR_TYPE_FLOAT] * sizeof(double));
+
 	for (int i = 0; i < numargs; i++)
 	{
 		varval_t *arg = se_argv(vm, numargs - i - 1);
 		if (VV_TYPE(arg) == VAR_TYPE_NULL)
 		{
 			push_imm(&jit, NULL);
+		}
+		else if (VV_TYPE(arg) == VAR_TYPE_FLOAT)
+		{
+			//fld qword ptr offset
+			emit(&jit, 0xdd);
+			emit(&jit, 0x05);
+			ds[tcp[VAR_TYPE_FLOAT]] = (double)arg->as.flt;
+			//static double test = 3.14;
+			//test = (double)arg->as.flt;
+			dd(&jit, (intptr_t)&ds[tcp[VAR_TYPE_FLOAT]]);
+			++tcp[VAR_TYPE_FLOAT];
+
+			//lea esp, [esp - 8]
+			emit(&jit, 0x8d);
+			emit(&jit, 0x64);
+			emit(&jit, 0x24);
+			emit(&jit, 0xf8);
+
+			//fstp qword ptr [esp]
+			emit(&jit, 0xdd);
+			emit(&jit, 0x1c);
+			emit(&jit, 0x24);
+			/*
+			emit(&jit, 0xdd);
+			emit(&jit, 0x5c);
+			emit(&jit, 0x24);
+			emit(&jit, 0xfc + (i+1) * sizeof(float)); //should be 4
+			*/
+
+			sc += sizeof(float); //should be 4
 		}
 		else
 		{
@@ -800,6 +848,15 @@ int vm_do_jit(vm_t *vm, vm_ffi_lib_func_t *lf)
 #endif
 #endif
 
+	emit(&jit, 0x83);
+	emit(&jit, 0xc4);
+	emit(&jit, sc);
+#if 0
+	jit[j++] = 0x83;
+	jit[j++] = 0xc4;
+	jit[j++] = sc; //add esp, X
+#endif
+
 	//xor(&jit, EAX, EAX);
 #if 1
 	emit(&jit, 0xc9); //leave
@@ -808,7 +865,7 @@ int vm_do_jit(vm_t *vm, vm_ffi_lib_func_t *lf)
 	//JIT_EMIT(X86_LEAVE);
 	//JIT_EMIT(X86_RET);
 
-	j = jit - buf;
+	//j = jit - buf;
 	//printf("j=%02X\n", j);
 #ifdef _WIN32
 	DWORD old;
@@ -822,6 +879,7 @@ int vm_do_jit(vm_t *vm, vm_ffi_lib_func_t *lf)
 
 	void *retval;
 	retval = call();
+	vm_mem_free(vm, ds);
 	//printf("retval=%d\n", retval);
 	//printf("err = %s\n", strerror(errno));
 	varval_t *vv = se_vv_create(vm, VAR_TYPE_INT); //should be fine for x86
@@ -940,20 +998,20 @@ stockfunction_t std_scriptfunctions[] = {
 	{"__internal_thread_set_sleep_time", sf_set_fps},
 	//{"__internal_thread_run", sf_thread_run}, //don't use this
 #endif
-	{ "abs",sf_abs },
-	{ "sinf",sf_m_sinf },
-	{"cosf",sf_m_cosf},
+	//{ "abs",sf_abs },
+	//{ "sinf",sf_m_sinf },
+	//{"cosf",sf_m_cosf},
 	{"eval", sf_eval},
-	{"exit", sf_exit},
+	//{"exit", sf_exit},
 	{ "buffer", sf_buffer },
-	{ "set_ffi_lib", sf_set_ffi_lib },
+	//{ "set_ffi_lib", sf_set_ffi_lib },
 	{ "int",sf_int },
 	{ "float",sf_float },
 	{"string",sf_string},
 	{ "read_text_file", sf_read_text_file },
 	{ "write_text_file", sf_write_text_file },
-	{ "rename", sf_rename },
-	{ "remove", sf_remove },
+	//{ "rename", sf_rename },
+	//{ "remove", sf_remove },
 	{ "listdir", sf_listdir },
 
 	{ "sendpacket", sf_sendpacket },
@@ -963,19 +1021,19 @@ stockfunction_t std_scriptfunctions[] = {
 	{ "fopen", sf_fopen },
 	{ "fwritevalue", sf_fwritevalue },
 	{ "strpos", sf_strpos },
-	{ "tolower", sf_tolower },
-	{ "toupper", sf_toupper },
+	//{ "tolower", sf_tolower },
+	//{ "toupper", sf_toupper },
 	{ "strtok", sf_strtok },
-	{"isdigit", sf_isdigit},
-	{"isalnum", sf_isalnum},
-	{"islower", sf_islower},
-	{"isupper", sf_isupper},
-	{"isalpha", sf_isalpha},
+	//{"isdigit", sf_isdigit},
+	//{"isalnum", sf_isalnum},
+	//{"islower", sf_islower},
+	//{"isupper", sf_isupper},
+	//{"isalpha", sf_isalpha},
 	{ "substr", sf_substr },
 	{ "get_in_string", sf_get_in_string },
 	{ "printf", sf_printf },
 	{ "sprintf", sf_sprintf },
-	{ "getchar", sf_getchar },
+	//{ "getchar", sf_getchar },
 	{"isdefined", sf_isdefined},
 	{ "get_time", sf_get_time },
 	{ "randomint", sf_randomint },
