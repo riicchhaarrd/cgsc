@@ -87,6 +87,8 @@ typedef struct {
 	dynarray structs;
 
 	FILE *logfile;
+
+	int last_opcode_index;
 } parser_t;
 
 #define SCOPE_POP(pp) pp->scopestack[--pp->ssp]

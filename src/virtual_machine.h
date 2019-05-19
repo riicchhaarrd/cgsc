@@ -97,6 +97,9 @@ struct vm_s {
 
 	bool is_running;
 	bool close_requested;
+
+	int cast_stack[100];
+	int cast_stack_ptr;
 	vector functioninfo;
 
 	intptr_t tmpstack[512];
@@ -133,7 +136,16 @@ static VM_INLINE void stack_push(vm_t *vm, intptr_t x) {
 	}
 }
 
+varval_t *vv_cast(vm_t *vm, varval_t *vv, int desired_type);
 static VM_INLINE void stack_push_vv(vm_t *vm, varval_t *x) {
+	if (vm->cast_stack_ptr > 0)
+	{
+		int cast_type = vm->cast_stack[--vm->cast_stack_ptr];
+		stack_push_vv(vm, vv_cast(vm, x, cast_type));
+		//printf("desired cast type = %s, current = %s\n", e_var_types_strings[cast_type], e_var_types_strings[VV_TYPE(vv)]);
+		se_vv_free(vm, x);
+		return;
+	}
 	stack_push(vm, (intptr_t)x);
 }
 

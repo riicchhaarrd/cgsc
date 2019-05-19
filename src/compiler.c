@@ -556,7 +556,7 @@ static void parser_init(parser_t *pp) {
 	array_init(&pp->structs, cstruct_t);
 	pp->logfile = NULL;
 	//pp->logfile = fopen("parser.log", "w");
-
+	pp->last_opcode_index = -1;
 	pp->execute = true;
 	pp->curpos = 0;
 	pp->scriptbuffer = NULL;
@@ -590,10 +590,17 @@ static void parser_cleanup(parser_t *pp) {
 
 //#define add_opcode(op) (pp->program[pp->program_counter++]=(int)op)
 
+static int program_previous_opcode(parser_t *pp)
+{
+	if (pp->last_opcode_index == -1)
+		return -1;
+	return pp->program[pp->last_opcode_index];
+}
+
 static void program_add_opcode(parser_t *pp, uint8_t opcode) {
 	if (!pp->execute)
 		return;
-
+	pp->last_opcode_index = pp->program_counter;
 	pp->program[pp->program_counter++] = opcode;
 	const char *opcode_str = opcode < OP_END_OF_LIST ? e_opcodes_strings[opcode] : "[not opcode]";
 	if(pp->logfile)
@@ -905,8 +912,33 @@ static int parser_factor(parser_t *pp) {
 				pp_expect(pp, TK_RPAREN);
 				if (parser_expression(pp))
 					return 1;
+#if 1
+				int prevop = program_previous_opcode(pp);
+				if (prevop == -1 || prevop == OP_CAST)
+				{
+					printf("we need a prevop to do a cast!\n");
+					return 1;
+				}
+
+				int prevopsz = pp->program_counter - pp->last_opcode_index; //size of the operands of that opcode + opcode (byte)
+				char *copy = (char*)xmalloc(prevopsz);
+				pp->program_counter -= prevopsz;
+				memcpy(copy, &pp->program[pp->program_counter], prevopsz);
+				//save contents of prev op + operands
+
+				//overwrite it with op_cast -> so it's executed before the op above
 				program_add_opcode(pp, OP_CAST);
 				program_add_short(pp, i - TK_KEYWORD_CHAR);
+
+				for (int k = 0; k < prevopsz; ++k)
+					pp->program[pp->program_counter++] = copy[k];
+
+				xfree(copy);
+#else
+				//op_cast is 5 in size
+				program_add_opcode(pp, OP_CAST);
+				program_add_short(pp, i - TK_KEYWORD_CHAR);
+#endif
 				is_cast = true;
 				break;
 			}

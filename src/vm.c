@@ -990,6 +990,7 @@ static VM_INLINE int vm_jit(vm_t *vm, int instr, unsigned char *asm)
 static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 #if 0
 	if (instr < OP_END_OF_LIST) {
+		printf("%s\n", e_opcodes_strings[instr]);
 		//printf("OP: %s (Location %d)\n", e_opcodes_strings[instr], vm->registers[REG_IP]);
 		if (!vm->thrunner)
 		{
@@ -1669,15 +1670,22 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 			//printf("desired cast type = %s, current = %s\n", e_var_types_strings[cast_type], e_var_types_strings[VV_TYPE(vv)]);
 			se_vv_free(vm, vv);
 		} break;
-
 		case OP_CAST: {
-			varval_t *vv = (varval_t*)stack_pop(vm);
 			uint16_t cast_type = read_short(vm);
+			if (vm->cast_stack_ptr >= sizeof(vm->cast_stack) / sizeof(vm->cast_stack[0]))
+			{
+				printf("fatal error cast_stack_ptr\n");
+				getchar(); //shouldnt happen
+				exit(0);
+			}
+			vm->cast_stack[vm->cast_stack_ptr++] = cast_type;
+#if 0
+			varval_t *vv = (varval_t*)stack_pop(vm);
 			stack_push_vv(vm, vv_cast(vm, vv,cast_type));
 			//printf("desired cast type = %s, current = %s\n", e_var_types_strings[cast_type], e_var_types_strings[VV_TYPE(vv)]);
 			se_vv_free(vm, vv);
+#endif
 		} break;
-
 		case OP_ADD: {
 			varval_t *b = (varval_t*)stack_pop(vm);
 			varval_t *a = (varval_t*)stack_pop(vm);
@@ -2438,6 +2446,7 @@ vm_t *vm_create(const char *program, int programsize) {
 	vm->program = (char*)vm_mem_alloc(vm, programsize);
 	memcpy(vm->program, (void*)&program[0], programsize);
 	vm->program_size = programsize;
+	vm->cast_stack_ptr = 0;
 
 #define INITIAL_ISTRING_LIST_SIZE (4096)
 

@@ -873,19 +873,55 @@ int vm_do_jit(vm_t *vm, vm_ffi_lib_func_t *lf)
 #else
 	mprotect(buf,page_size,PROT_READ | PROT_EXEC | PROT_WRITE);
 #endif
-	void*(*call)() = (void*(*)())buf;
 
 	//__asm int 3
 
-	void *retval;
-	retval = call();
+
+	if (vm->cast_stack_ptr > 0)
+	{
+		int cast_type = vm->cast_stack[vm->cast_stack_ptr - 1];
+		//printf("we want to cast to %d\n", cast_type);
+		switch (cast_type)
+		{
+			case VAR_TYPE_FLOAT:
+			case VAR_TYPE_DOUBLE:
+			{
+				double(*call)() = (double(*)())buf;
+				varval_t *vv = se_vv_create(vm, VAR_TYPE_FLOAT);
+				vv->as.flt = (float)call();
+				vv->flags |= VF_FFI;
+				stack_push(vm, vv);
+			} break;
+
+			default:
+			{
+				void*(*call)() = (void*(*)())buf;
+				void *retval;
+				retval = call();
+				varval_t *vv = se_vv_create(vm, VAR_TYPE_INT); //should be fine for x86
+				vv->as.integer = retval;
+				vv->flags |= VF_FFI;
+				stack_push(vm, vv);
+			} break;
+		}
+		--vm->cast_stack_ptr;
+	}
+	else
+	{
+		void*(*call)() = (void*(*)())buf;
+		void *retval;
+		retval = call();
+		varval_t *vv = se_vv_create(vm, VAR_TYPE_INT); //should be fine for x86
+		vv->as.integer = retval;
+		vv->flags |= VF_FFI;
+		stack_push(vm, vv);
+	}
+
+	
 	vm_mem_free(vm, ds);
 	//printf("retval=%d\n", retval);
 	//printf("err = %s\n", strerror(errno));
-	varval_t *vv = se_vv_create(vm, VAR_TYPE_INT); //should be fine for x86
-	vv->as.integer = retval;
-	vv->flags |= VF_FFI;
-	stack_push(vm, vv);
+	
 	//se_addint(vm, retval);
 	status = FFI_SUCCESS;
 
