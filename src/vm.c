@@ -1310,7 +1310,7 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 
 			if (str_index >= vm->istringlistsize)
 				printf("str_index out of bounds!!\n");
-			if (vv_obj->as.obj->type == VT_OBJECT_BUFFER)
+			if (VV_TYPE(vv_obj) == VAR_TYPE_OBJECT && vv_obj->as.obj->type == VT_OBJECT_BUFFER)
 			{
 				vt_buffer_t *vtb = (vt_buffer_t*)vv_obj->as.obj->obj;// DYN_TYPE_HDR(vt_buffer_t, (char*)vv_obj->as.obj->obj);
 				cstruct_t *cs = vm_get_struct(vm, vtb->type);
