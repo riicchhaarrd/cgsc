@@ -377,6 +377,16 @@ static float se_vv_to_float(varval_t *vv) {
 static int se_vv_to_int(vm_t *vm, varval_t *vv) {
 	int ret = 0;
 	switch (VV_TYPE(vv)) {
+	case VAR_TYPE_OBJECT:
+		switch (vv->as.obj->type)
+		{
+			case VT_OBJECT_BUFFER:
+			{
+				vt_buffer_t *vtb = (vt_buffer_t*)vv->as.obj->obj;
+				return (intptr_t)vtb->data;
+			}
+		}
+		return 0;
 	case VAR_TYPE_INT:
 	case VAR_TYPE_FUNCTION_POINTER:
 		return vv->as.integer;
