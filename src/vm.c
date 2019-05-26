@@ -1701,9 +1701,13 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 			varval_t *a = (varval_t*)stack_pop(vm);
 			if (VV_IS_NUMBER(a) && VV_IS_NUMBER(b))
 			{
+				int ib;
+				int ia;
+
 				if (VV_TYPE(a) == VAR_TYPE_INT && VV_TYPE(b) == VAR_TYPE_INT) {
-					int ib = se_vv_to_int(vm, b);
-					int ia = se_vv_to_int(vm, a);
+					unhandled:
+					ib = se_vv_to_int(vm, b);
+					ia = se_vv_to_int(vm, a);
 					ia += ib;
 					se_addint(vm, ia);
 				}
@@ -1756,6 +1760,10 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 						v[2] += fa;
 					}
 					se_addvector(vm, v);
+				}
+				else
+				{
+					goto unhandled;
 				}
 			}
 			se_vv_free(vm, a);
