@@ -40,7 +40,7 @@ bool resolve_adr(const char *addr_str, struct sockaddr_in *adr) {
 
 	struct hostent *host = 0;
 	if ((host = gethostbyname(ip_str)) == NULL) {
-		printf("failed to resolve hostname '%s'\n", addr_str);
+		vm_printf("failed to resolve hostname '%s'\n", addr_str);
 		return false;
 	}
 	adr->sin_family = AF_INET;
@@ -60,7 +60,7 @@ static int sf_sendpacket(vm_t *vm) {
 #ifdef _WIN32
 	if (!wsa_init) {
 		if (WSAStartup(MAKEWORD(2, 0), &wsaData) != 0) {
-			printf("wsastartup failed\n");
+			vm_printf("wsastartup failed\n");
 			return 0;
 		}
 		wsa_init = true;
@@ -68,7 +68,7 @@ static int sf_sendpacket(vm_t *vm) {
 #endif
 	SOCKET sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (sock == INVALID_SOCKET) {
-		printf("failed to create socket\n");
+		vm_printf("failed to create socket\n");
 		return 0;
 	}
 	const char *ip = se_getstring(vm, 0);
@@ -76,12 +76,12 @@ static int sf_sendpacket(vm_t *vm) {
 	int bufsz = se_getint(vm, 2);
 	struct sockaddr_in adr;
 	if (!resolve_adr(ip, &adr)) {
-		printf("failed to resolve address '%s'\n", ip);
+		vm_printf("failed to resolve address '%s'\n", ip);
 		return 0;
 	}
 	int ret = sendto(sock, buf, bufsz, 0, (struct sockaddr*)&adr, sizeof(adr));
 	if (ret == SOCKET_ERROR) {
-		printf("sendto failed\n");
+		vm_printf("sendto failed\n");
 		return 0;
 	}
 	static char recvbuffer[16384];
@@ -90,7 +90,7 @@ static int sf_sendpacket(vm_t *vm) {
 	int fromlen = sizeof(from);
 	ret = recvfrom(sock, recvbuffer, sizeof(recvbuffer), 0, (struct sockaddr*)&from, (socklen_t*)&fromlen);
 	if (ret == SOCKET_ERROR) {
-		printf("recvfrom failed\n");
+		vm_printf("recvfrom failed\n");
 		return 0;
 	}
 	se_addstring(vm, recvbuffer);
@@ -99,13 +99,13 @@ static int sf_sendpacket(vm_t *vm) {
 
 int sf_print(vm_t *vm) {
 	for (int i = 0; i < se_argc(vm); i++)
-		printf("%s", se_getstring(vm, i));
+		vm_printf("%s", se_getstring(vm, i));
 	return 0;
 }
 
 int sf_println(vm_t *vm) {
 	for (int i = 0; i < se_argc(vm); i++)
-		printf("%s\n", se_getstring(vm, i));
+		vm_printf("%s\n", se_getstring(vm, i));
 	return 0;
 }
 
@@ -144,7 +144,7 @@ int sf_sprintf(vm_t *vm) {
 int sf_printf(vm_t *vm) {
 	sf_sprintf(vm);
 	varval_t *vv = stack_pop_vv(vm);
-	printf("%s", se_vv_to_string(vm, vv));
+	vm_printf("%s", se_vv_to_string(vm, vv));
 	se_vv_free(vm, vv);
 	return 0;
 }
@@ -398,7 +398,7 @@ int sf_fwritevalue(vm_t *vm) {
 		written = fwrite(as_str, sz==0?strlen(as_str):strlen(as_str)+1, 1, fp);
 	} break;
 	default:
-		printf("'%s' unsupported value type! no fwrite available\n", VV_TYPE_STRING(val));
+		vm_printf("'%s' unsupported value type! no fwrite available\n", VV_TYPE_STRING(val));
 		break;
 	}
 	se_addint(vm, written);
@@ -467,7 +467,7 @@ int sf_setpixel(vm_t *vm) {
 	SetPixelV(console_hdc, (int)xyz[0], (int)xyz[1], RGB((int)rgb[0], (int)rgb[1], (int)rgb[2]));
 	ReleaseDC(console_hwnd, console_hdc);
 #else
-	printf("this function has no support for linux at the moment.\n");
+	vm_printf("this function has no support for linux at the moment.\n");
 #endif
 	return 0;
 }
@@ -550,7 +550,7 @@ int vm_do_jit(vm_t *vm, HMODULE lib, DWORD addr, varval_t **argv, int argc)
 #endif
 #if 0
 	int(__stdcall *testrand)() = (int(__stdcall *)())addr;
-	printf("testrand=%d\n", testrand());
+	vm_printf("testrand=%d\n", testrand());
 #endif
 	//__asm int 3
 	int funcsize = 2000;
@@ -582,7 +582,7 @@ int vm_do_jit(vm_t *vm, HMODULE lib, DWORD addr, varval_t **argv, int argc)
 	//char *jit = malloc(2000);
 	int j = 0;
 	memset(jit, 0x90, page_size);
-	//printf("jit loc = %02X, pagesize=%d\n", jit, page_size);
+	//vm_printf("jit loc = %02X, pagesize=%d\n", jit, page_size);
 	j += 32;
 
 #if 1
@@ -690,7 +690,7 @@ int vm_do_jit(vm_t *vm, HMODULE lib, DWORD addr, varval_t **argv, int argc)
 
 int vm_do_jit(vm_t *vm, vm_ffi_lib_func_t *lf)
 {
-	//printf("vm_do_jit(%s)\n", lf->name);
+	//vm_printf("vm_do_jit(%s)\n", lf->name);
 
 	int status = FFI_GENERIC_ERROR;
 
@@ -739,7 +739,7 @@ int vm_do_jit(vm_t *vm, vm_ffi_lib_func_t *lf)
 
 	//char *jit = malloc(2000);
 
-	//printf("jit loc = %02X\n", jit);
+	//vm_printf("jit loc = %02X\n", jit);
 	//int j = 0;
 	memset(buf, 0x90, page_size);
 
@@ -866,7 +866,7 @@ int vm_do_jit(vm_t *vm, vm_ffi_lib_func_t *lf)
 	//JIT_EMIT(X86_RET);
 
 	//j = jit - buf;
-	//printf("j=%02X\n", j);
+	//vm_printf("j=%02X\n", j);
 #ifdef _WIN32
 	DWORD old;
 	VirtualProtect(buf, page_size, PAGE_EXECUTE_READ, &old);
@@ -880,7 +880,7 @@ int vm_do_jit(vm_t *vm, vm_ffi_lib_func_t *lf)
 	if (vm->cast_stack_ptr > 0)
 	{
 		int cast_type = vm->cast_stack[vm->cast_stack_ptr - 1];
-		//printf("we want to cast to %d\n", cast_type);
+		//vm_printf("we want to cast to %d\n", cast_type);
 		switch (cast_type)
 		{
 			case VAR_TYPE_FLOAT:
@@ -919,8 +919,8 @@ int vm_do_jit(vm_t *vm, vm_ffi_lib_func_t *lf)
 
 	
 	vm_mem_free(vm, ds);
-	//printf("retval=%d\n", retval);
-	//printf("err = %s\n", strerror(errno));
+	//vm_printf("retval=%d\n", retval);
+	//vm_printf("err = %s\n", strerror(errno));
 	
 	//se_addint(vm, retval);
 	status = FFI_SUCCESS;
@@ -955,7 +955,7 @@ int sf_buffer(vm_t *vm)
 	vt_buffer_t *vtb = (vt_buffer_t*)malloc(sizeof(vt_buffer_t) + sz);
 	vtb->size = sz;
 	vtb->data = ((char*)vtb) + sizeof(vt_buffer_t);
-	//printf("spawning %s\n", cs->name);
+	//vm_printf("spawning %s\n", cs->name);
 	vtb->type = -1;
 	vv->as.obj->obj = vtb;
 	stack_push_vv(vm, vv);
@@ -992,7 +992,7 @@ int sf_eval(vm_t *vm)
 	char *script;
 	int script_size;
 	if (parser_compile_string(str, &script, &script_size)) {
-		printf("Failed compiling '%s'.\n", str);
+		vm_printf("Failed compiling '%s'.\n", str);
 		//vm_mem_free(vm, str);
 		return 0;
 	}
@@ -1016,8 +1016,8 @@ int sf_eval(vm_t *vm)
 
 #if 1
 	while (vm_get_num_active_threadrunners(nvm) > 0) {
-		vm_run_active_threads(nvm, fps_delta);
-		sys_sleep(fps_delta);
+		vm_run_active_threads(nvm, 1000 / 20);
+		sys_sleep(1000 / 20);
 	}
 #endif
 	vm_free(nvm);

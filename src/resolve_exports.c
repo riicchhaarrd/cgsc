@@ -201,14 +201,14 @@ void read_elf_exported_symbols(vm_t *vm, vm_ffi_lib_t *l, const char* filename)
 	size_t filelen;
 	if (read_binary_file(filename, &filebuf, &filelen) != 0)
 	{
-		printf("failed to open filename %s\n", filename);
+		vm_printf("failed to open filename %s\n", filename);
 		return;
 	}
 
 	elfx86_t *hdr = (elfx86_t*)filebuf;
 	if (*(unsigned int*)hdr->magic == 0x464c457f) //won't work for big endian, oh well
 	{
-		//printf("shstrndx = %d\n", hdr->e_shstrndx);
+		//vm_printf("shstrndx = %d\n", hdr->e_shstrndx);
 		char *string_table = (char*)elf_get_section(hdr, hdr->e_shstrndx);
 		for (u32 i = 0; i < hdr->e_shnum; ++i)
 		{
@@ -218,9 +218,9 @@ void read_elf_exported_symbols(vm_t *vm, vm_ffi_lib_t *l, const char* filename)
 			elf_get_section_header_type_string(shdr->sh_type, typestr, sizeof(typestr));
 #if 0
 			if (i == hdr->e_shstrndx)
-				printf("\tsection: %d %s (type=%s)\n", shdr->sh_name, section_name, typestr);
+				vm_printf("\tsection: %d %s (type=%s)\n", shdr->sh_name, section_name, typestr);
 			else
-				printf("section: %d %s (type=%s)\n", shdr->sh_name, section_name, typestr);
+				vm_printf("section: %d %s (type=%s)\n", shdr->sh_name, section_name, typestr);
 #endif
 
 			if (!strcmp(section_name, ".dynsym"))
@@ -229,20 +229,20 @@ void read_elf_exported_symbols(vm_t *vm, vm_ffi_lib_t *l, const char* filename)
 				if (idx != -1)
 				{
 					char *dyn_string_table = (char*)elf_get_section(hdr, idx);
-					//printf("section: %d %s (type=%s)\n", shdr->sh_name, section_name, typestr);
+					//vm_printf("section: %d %s (type=%s)\n", shdr->sh_name, section_name, typestr);
 					if (shdr->sh_size == 0)
 					{
-						printf("empty sh_size!\n");
+						vm_printf("empty sh_size!\n");
 					}
 					else
 					{
 						u32 numsymbols = shdr->sh_size / sizeof(elfx86_sym_t);
 						if (shdr->sh_entsize != sizeof(elfx86_sym_t))
 						{
-							printf("error, sizes don't match!\n");
+							vm_printf("error, sizes don't match!\n");
 							break;
 						}
-						//printf("numsymbols = %d, sh_size = %d\n", numsymbols, shdr->sh_size);
+						//vm_printf("numsymbols = %d, sh_size = %d\n", numsymbols, shdr->sh_size);
 						for (u32 k = 1; k < numsymbols; ++k) //first is always reserved SHN_UNDEF
 						{
 							elfx86_sym_t *sym = (elfx86_sym_t*)elf_get_section(hdr, i) + k;
@@ -254,7 +254,7 @@ void read_elf_exported_symbols(vm_t *vm, vm_ffi_lib_t *l, const char* filename)
 							{
 								const char *symbol_name = sym->st_name + dyn_string_table;
 #if 0
-								printf("\tsymbol: %s, value: %02X, size: %02X, info: %d, other: %d, shndx: %d\n", symbol_name,
+								vm_printf("\tsymbol: %s, value: %02X, size: %02X, info: %d, other: %d, shndx: %d\n", symbol_name,
 									sym->st_value,
 									sym->st_size,
 									sym->st_info,
@@ -262,16 +262,16 @@ void read_elf_exported_symbols(vm_t *vm, vm_ffi_lib_t *l, const char* filename)
 									sym->st_shndx
 								);
 #endif
-								//printf("\tsymbol: %s\n", symbol_name);
+								//vm_printf("\tsymbol: %s\n", symbol_name);
 								vm_ffi_lib_func_t func;
 								snprintf(func.name, sizeof(func.name), "%s", symbol_name);
 								func.address = (void*)dlsym(l->handle, symbol_name);
 								if (!func.address)
 								{
-									//printf("failed to load function '%s' from '%s'\n", symbol_name, l->name);
+									//vm_printf("failed to load function '%s' from '%s'\n", symbol_name, l->name);
 									continue;
 								}
-								//printf("Export: %s\n", (BYTE *)lib + (int)names[i]);
+								//vm_printf("Export: %s\n", (BYTE *)lib + (int)names[i]);
 								func.hash = hash_string(func.name);
 								array_push(&l->functions, &func);
 							}
@@ -279,12 +279,12 @@ void read_elf_exported_symbols(vm_t *vm, vm_ffi_lib_t *l, const char* filename)
 					}
 				}
 				else
-					printf("unable to find .dynstr!\n");
+					vm_printf("unable to find .dynstr!\n");
 			}
 		}
 	}
 	else
-		printf("invalid elf header!\n");
+		vm_printf("invalid elf header!\n");
 
 	free_binary_file(&filebuf);
 }

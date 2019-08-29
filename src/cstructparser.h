@@ -291,7 +291,7 @@ CSTRUCTPARSER_FUNCTION bool ps_accept(parsestate_t *ps, int t, dynstring *s)
 	}
 	else
 	{
-		;// printf("got %s\n", parse_token_strings[tk]);
+		;// vm_printf("got %s\n", parse_token_strings[tk]);
 	}
 	dynfree(s);
 	ps->pos = pos;
@@ -338,7 +338,7 @@ CSTRUCTPARSER_FUNCTION int parse_err_free_strings(dynstring *strings, int n, dyn
 	{
 		array_get(structs, cstruct_t, cs, i);
 
-		//printf("struct %s -> size = %d\n", cs->name, cs->size);
+		//vm_printf("struct %s -> size = %d\n", cs->name, cs->size);
 
 		array_free(&cs->fields);
 	}
@@ -349,7 +349,7 @@ CSTRUCTPARSER_FUNCTION int parse_err_free_strings(dynstring *strings, int n, dyn
 		for (int i = 0; i < n; ++i)
 			dynfree(&strings[i]);
 	}
-	printf("%s", s);
+	vm_printf("%s", s);
 	return 0;
 }
 
@@ -447,13 +447,13 @@ CSTRUCTPARSER_FUNCTION int cstructparser(const char *string, dynarray *structs, 
 							//add the var and free it and decrease n_ident
 							--n_ident;
 							dynstring varName = idents[n_ident];
-							//printf("varName = %s\n", varName);
+							//vm_printf("varName = %s\n", varName);
 
 							int ctype = get_ctype_for_keywords(idents, n_ident);
 							if (arraysize != 1)
 								ctype |= CTYPE_ARRAY;
 							int sz = ctype_get_size(ctype) * arraysize;
-							//printf("-> %s %s : %d %d\n", ctypestrings[ctype], varName, memberoffset, sz);
+							//vm_printf("-> %s %s : %d %d\n", ctypestrings[ctype], varName, memberoffset, sz);
 							snprintf(field.name, sizeof(field.name), "%s", varName);
 							field.type = ctype;
 							field.size = sz;
@@ -473,7 +473,7 @@ CSTRUCTPARSER_FUNCTION int cstructparser(const char *string, dynarray *structs, 
 						}
 						if (gt == TOKEN_ASTERISK)
 							idents[n_ident] = dynnew("*");
-						//printf("got ident %s\n", idents[n_ident]);
+						//vm_printf("got ident %s\n", idents[n_ident]);
 						++n_ident;
 					}
 					dynstring variableName = idents[n_ident - 1];
@@ -481,7 +481,7 @@ CSTRUCTPARSER_FUNCTION int cstructparser(const char *string, dynarray *structs, 
 					if (arraysize != 1)
 						ctype |= CTYPE_ARRAY;
 					int sz = ctype_get_size(ctype) * arraysize;
-					//printf("%s %s : %d %d\n", ctypestrings[ctype], variableName, memberoffset, sz);
+					//vm_printf("%s %s : %d %d\n", ctypestrings[ctype], variableName, memberoffset, sz);
 					snprintf(field.name, sizeof(field.name), "%s", variableName);
 					field.type = ctype;
 					field.size = sz;
@@ -514,7 +514,7 @@ CSTRUCTPARSER_FUNCTION int cstructparser(const char *string, dynarray *structs, 
 					dynfree(&s);
 					return ps.pos;
 				}
-				//printf("struct size = %d %d\n", memberoffset, sizeof(kek_t));
+				//vm_printf("struct size = %d %d\n", memberoffset, sizeof(kek_t));
 			}
 		} break;
 		}

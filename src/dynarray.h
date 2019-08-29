@@ -52,7 +52,7 @@ DYN_ARRAY_FUNCTION void* array_push_r(dynarray *v, char *elem)
 	memcpy(element_ptr, elem, v->element_size);
 	++v->n_elements;
 	return element_ptr;
-	//printf("copying %d to %d size = %d\n", *(int*)elem, *(int*)element_ptr, v->element_size);
+	//vm_printf("copying %d to %d size = %d\n", *(int*)elem, *(int*)element_ptr, v->element_size);
 }
 
 DYN_ARRAY_FUNCTION void array_resize(dynarray *v, size_t new_sz)

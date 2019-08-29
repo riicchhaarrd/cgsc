@@ -6,7 +6,7 @@ static int vars_created = 0;
 
 vt_object_t *se_obj_create(vm_t *vm) {
 	vt_object_t *obj = (vt_object_t*)vm_mem_alloc(vm, sizeof(vt_object_t));
-	//printf("CREATED OBJ %02X\n", obj);
+	//vm_printf("CREATED OBJ %02X\n", obj);
 	obj->type = VT_OBJECT_GENERIC;
 	obj->custom = NULL;
 	obj->obj = NULL;
@@ -80,16 +80,16 @@ varval_t *se_vv_create(vm_t *vm, e_var_types_t type) {
 	
 	vector_add(&vm->vars, vv);
 
-	//printf("adding vv(%02X)\n", vv);
+	//vm_printf("adding vv(%02X)\n", vv);
 
-	//printf("vars size =%d\n", vector_count(&vm->vars));
+	//vm_printf("vars size =%d\n", vector_count(&vm->vars));
 #ifdef MEMORY_DEBUG
 
-	printf("VAR INIT\n");
+	vm_printf("VAR INIT\n");
 	for (int i = 0; i < vector_count(&vm->vars); i++) {
-		printf("v %d = %02X\n", i, vector_get(&vm->vars, i));
+		vm_printf("v %d = %02X\n", i, vector_get(&vm->vars, i));
 	}
-	printf("VAR INIT END\n");
+	vm_printf("VAR INIT END\n");
 #endif
 	return vv;
 }
@@ -165,7 +165,7 @@ void se_vv_remove_reference(vm_t *vm, varval_t *vv) {
 		return;
 	static int removed = 0;
 	--vv->refs;
-	//printf("REMOVE_REFERENCE (%02X) %d <refs=%d, %s>\n", vv, removed++, vv->refs, e_var_types_strings[vv->type]);
+	//vm_printf("REMOVE_REFERENCE (%02X) %d <refs=%d, %s>\n", vv, removed++, vv->refs, e_var_types_strings[vv->type]);
 
 	se_vv_free(vm, vv);
 	se_vv_gc_nullify_references(vm, vv);
@@ -193,20 +193,20 @@ void se_vv_string_free(vm_t *vm, varval_t *vv) {
 
 varval_t *se_vv_get_field(vm_t *vm, varval_t *vv, int key) {
 	if (!VV_USE_REF(vv)) {
-		printf("tried to get key on non-object\n");
+		vm_printf("tried to get key on non-object\n");
 		return NULL;
 	}
 
 	vt_object_t *obj = vv->as.obj;
 	vt_object_field_t *field = NULL;
-	//printf("GET_FIELD{numfields=%d}\n", obj->numfields);
+	//vm_printf("GET_FIELD{numfields=%d}\n", obj->numfields);
 	if (vv->type == VAR_TYPE_OBJECT) {
 
 		if (obj->custom != NULL) {
 			for (int i = 0; obj->custom[i].name; i++) {
 				const char *as_str = se_index_to_string(vm, key);
 				if (as_str == NULL) {
-					printf("as_str is null, key = %d, custom name = %s\n", key, obj->custom[i].name);
+					vm_printf("as_str is null, key = %d, custom name = %s\n", key, obj->custom[i].name);
 					break;
 				}
 				if (!strcmp(obj->custom[i].name, as_str)) {
@@ -252,7 +252,7 @@ varval_t *se_vv_get_field(vm_t *vm, varval_t *vv, int key) {
 
 void se_vv_set_field(vm_t *vm, varval_t *vv, int key, varval_t *value) {
 	if (!VV_USE_REF(vv)) {
-		printf("tried to set key on non-object/array\n");
+		vm_printf("tried to set key on non-object/array\n");
 		return;
 	}
 	vt_object_t *obj = vv->as.obj;
@@ -263,7 +263,7 @@ void se_vv_set_field(vm_t *vm, varval_t *vv, int key, varval_t *value) {
 			for (int i = 0; obj->custom[i].name; i++) {
 				const char *as_str = se_index_to_string(vm, key);
 				if (as_str == NULL) {
-					//printf("as_str is null, key = %d, custom name = %s\n", key, obj->custom[i].name);
+					//vm_printf("as_str is null, key = %d, custom name = %s\n", key, obj->custom[i].name);
 					break;
 				}
 				if (!strcmp(obj->custom[i].name, as_str)) {
@@ -317,7 +317,7 @@ void se_vv_set_field(vm_t *vm, varval_t *vv, int key, varval_t *value) {
 
 		vt_object_field_t *n = (vt_object_field_t*)vm_mem_realloc(vm, obj->fields, sizeof(vt_object_t) * obj->numfields);
 		if (n == NULL) {
-			printf("out of memory!\n");
+			vm_printf("out of memory!\n");
 			return;
 		}
 		obj->fields = n;
@@ -344,7 +344,7 @@ void se_vv_set_field(vm_t *vm, varval_t *vv, int key, varval_t *value) {
 	field->value = copy;
 	field->index = key;
 
-	//printf("key(%s) value ptr %02X (new refs = %d)\n", se_index_to_string(vm, key), value, value->refs);
+	//vm_printf("key(%s) value ptr %02X (new refs = %d)\n", se_index_to_string(vm, key), value, value->refs);
 }
 
 static void se_vv_object_free_fields(vm_t *vm, varval_t *vv) {
@@ -361,16 +361,16 @@ static void se_vv_object_free_fields(vm_t *vm, varval_t *vv) {
 	*/
 	vt_object_t *obj = vv->as.obj;
 
-	//printf("FREEING OBJECT %02X, numfields=%d (%s)\n", obj, vector_count(&obj->fields), VV_TYPE_STRING(vv));
+	//vm_printf("FREEING OBJECT %02X, numfields=%d (%s)\n", obj, vector_count(&obj->fields), VV_TYPE_STRING(vv));
 
 	int nf = vector_count(&obj->fields);
-	//printf("numfields=%d\n", nf);
+	//vm_printf("numfields=%d\n", nf);
 	for (int i = 0; i < vector_count(&obj->fields); i++) {
 		vt_object_field_t *of = (vt_object_field_t*)vector_get(&obj->fields, i);
-		//printf("freeing field %s\n", se_index_to_string(vm, of->stringindex));
+		//vm_printf("freeing field %s\n", se_index_to_string(vm, of->stringindex));
 		if (of->value == NULL)
 			continue;
-		//printf("DELETING OBJECT FIELD %d\n", i);
+		//vm_printf("DELETING OBJECT FIELD %d\n", i);
 		se_vv_remove_reference(vm, of->value);
 		of->value = NULL;
 	}
@@ -380,7 +380,7 @@ static void se_vv_object_free_fields(vm_t *vm, varval_t *vv) {
 void se_vv_object_free(vm_t *vm, varval_t *vv) {
 	if (!VV_USE_REF(vv))
 		return;
-	//printf("FREE OBJ [%02X] numfields=%d\n", vv->obj, vector_count(&vv->obj->fields));
+	//vm_printf("FREE OBJ [%02X] numfields=%d\n", vv->obj, vector_count(&vv->obj->fields));
 	se_vv_object_free_fields(vm, vv);
 	if (vv->as.obj->deconstructor != NULL)
 		vv->as.obj->deconstructor(vm, vv->as.obj->obj);
@@ -397,7 +397,7 @@ void se_vv_free_force(vm_t *vm, varval_t *vv) {
 
 int se_vv_free_r(vm_t *vm, varval_t *vv, const char *_file, int _line) {
 	if (!vv) {
-		//printf("no need to free null!\n");
+		//vm_printf("no need to free null!\n");
 		return 1;
 	}
 
@@ -405,14 +405,14 @@ int se_vv_free_r(vm_t *vm, varval_t *vv, const char *_file, int _line) {
 		return 1;
 
 	if (vv->refs > 0) {
-		//printf("VV->REFS > 0 (%d, TYPE=%s)\n", vv->refs, e_var_types_strings[vv->type]);
+		//vm_printf("VV->REFS > 0 (%d, TYPE=%s)\n", vv->refs, e_var_types_strings[vv->type]);
 		return 1;
 	}
 
 	--vars_created;
 #if 0
 	if(vars_created == 0)
-		printf("vars freed=%d\n", vars_created);
+		vm_printf("vars freed=%d\n", vars_created);
 #endif
 	if (!VV_IS_POINTER(vv))
 	{
@@ -427,24 +427,24 @@ int se_vv_free_r(vm_t *vm, varval_t *vv, const char *_file, int _line) {
 #if 0
 		if (vv->flags & VAR_FLAG_LEVEL_PLAYER) {
 			//__asm int 3 //interupt m8
-			printf("vv->flags & VAR_FLAG_LEVEL_PLAYER\n");
+			vm_printf("vv->flags & VAR_FLAG_LEVEL_PLAYER\n");
 			getchar();
 		}
-		printf("deleting %02X from vm->vars FROM %s:%d\n", vv, _file, _line);
+		vm_printf("deleting %02X from vm->vars FROM %s:%d\n", vv, _file, _line);
 #endif
 		vector_delete(&vm->vars, loc);
-		//printf("vars size %d\n", vector_count(&vm->vars));
+		//vm_printf("vars size %d\n", vector_count(&vm->vars));
 	} else {
-		//printf("vv (%02X) not found in vars!\n", vv);
+		//vm_printf("vv (%02X) not found in vars!\n", vv);
 	}
 
 #ifdef MEMORY_DEBUG
-	printf("VAR FREE\n");
+	vm_printf("VAR FREE\n");
 	for (int i = 0; i < vector_count(&vm->vars); i++) {
 		varval_t *ivv = (varval_t*)vector_get(&vm->vars, i);
-		printf("v %d (refs = %d) (type=%s) = %02X debugstr=%s (%s)\n", i, ivv->refs, VV_TYPE_STRING(ivv), ivv, ivv->debugstring, se_vv_to_string(vm,ivv));
+		vm_printf("v %d (refs = %d) (type=%s) = %02X debugstr=%s (%s)\n", i, ivv->refs, VV_TYPE_STRING(ivv), ivv, ivv->debugstring, se_vv_to_string(vm,ivv));
 	}
-	printf("VAR FREE END\n");
+	vm_printf("VAR FREE END\n");
 #endif
 
 	//add here the strings/objects/array other type of bs to clean aswell
@@ -484,7 +484,7 @@ vt_istring_t *se_istring_find(vm_t *vm, const char *str) {
 
 const char *se_index_to_string(vm_t *vm, int i) {
 	if (i >= vm->istringlistsize) {
-		printf("index to string too high %d, list size = %d\n", i, vm->istringlistsize);
+		vm_printf("index to string too high %d, list size = %d\n", i, vm->istringlistsize);
 		return NULL;
 	}
 	return vm->istringlist[i].string;

@@ -25,7 +25,7 @@ int main(int argc, char **argv) {
 
 #if 1
 	if (argc < 2) {
-		printf("No script specified.\n");
+		vm_printf("No script specified.\n");
 		goto _wait_and_exit;
 	}
 	const char *filename = argv[1];
@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
 	LARGE_INTEGER start;
 	QueryPerformanceCounter(&start);
 
-	//printf("] Starting benchmark for file '%s'\n", filename);
+	//vm_printf("] Starting benchmark for file '%s'\n", filename);
 #endif
 	srand(time(0));
 	signal(SIGINT, signal_int);
@@ -51,7 +51,7 @@ int main(int argc, char **argv) {
 	char *script;
 	int script_size;
 	if (parser_compile(filename, &script, &script_size)) {
-		printf("Failed compiling '%s'.\n", filename);
+		vm_printf("Failed compiling '%s'.\n", filename);
 		goto _wait_and_exit;
 	}
 #if 0
@@ -73,11 +73,11 @@ int main(int argc, char **argv) {
 	QueryPerformanceCounter(&end);
 
 	double interval = (double)(end.QuadPart - start.QuadPart) / freq.QuadPart;
-	//printf("Finished in %g seconds\n", interval);
+	//vm_printf("Finished in %g seconds\n", interval);
 #endif
 _wait_and_exit:
 #ifdef _WIN32
-	//printf("Press [ENTER] to continue.\n");
+	//vm_printf("Press [ENTER] to continue.\n");
 	//getchar();
 #endif
 	return 0;

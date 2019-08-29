@@ -6,6 +6,8 @@
 #include <errno.h>
 #endif
 
+int(*g_printf_hook)(const char *, ...) = (int(*)(const char*, ...))printf;
+
 #include "dynstring.h"
 
 void dynaddn(dynstring *s, const char *str, size_t n)
@@ -102,7 +104,7 @@ int sys_get_files_from_path(const char *path, file_info_t **files, size_t *outnu
 
 		closedir(d);
 	} else {
-		printf("failed opendir, error=%s\n", strerror(errno));
+		vm_printf("failed opendir, error=%s\n", strerror(errno));
 		return 1;
 	}
 #endif

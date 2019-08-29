@@ -42,7 +42,7 @@ static int parser_append_to_parse_string(parser_t *pp, int c) {
 		return 0;
 #endif
 	if (pp->stringindex >= sizeof(pp->string)) {
-		printf("keyword string index overflow\n");
+		vm_printf("keyword string index overflow\n");
 		return 0;
 	}
 	pp->string[pp->stringindex++] = c;
@@ -411,7 +411,7 @@ static int parser_accept_token(parser_t *pp, int token) {
 	pp->prevpos = pp->curpos;
 	int next_token = parser_read_next_token(pp);
 	pp->token = next_token;
-	//printf("pp_accept(%s), next_tkn = %s\n", lex_token_strings[token], lex_token_strings[next_token]);
+	//vm_printf("pp_accept(%s), next_tkn = %s\n", lex_token_strings[token], lex_token_strings[next_token]);
 	if (next_token == token) {
 		return 1;
 	}
@@ -462,7 +462,7 @@ static int parser_expect_token(parser_t *pp, int token) {
 	pp->error = 1;
 	int lineno = parser_get_location(pp);
 	parser_display_history(pp);
-	printf("error: unexpected symbol! expected %s, got %s at line %d\n", lex_token_strings[token], lex_token_strings[pp->token], lineno);
+	vm_printf("error: unexpected symbol! expected %s, got %s at line %d\n", lex_token_strings[token], lex_token_strings[pp->token], lineno);
 	return 0;
 }
 
@@ -526,7 +526,7 @@ static int parser_create_indexed_string(parser_t *pp, const char *str) {
 
 	if (i == MAX_ISTRINGS) {
 		//error max strings
-		printf("MAX_ISTRINGS\n");
+		vm_printf("MAX_ISTRINGS\n");
 		return 0;
 	}
 	++pp->numistrings;
@@ -537,7 +537,7 @@ static int parser_create_indexed_string(parser_t *pp, const char *str) {
 
 static void parser_free_indexed_string(parser_t *pp, int index) {
 	if (index > 0xffff) {
-		printf("too high m8\n");
+		vm_printf("too high m8\n");
 		return;
 	}
 
@@ -638,7 +638,7 @@ static void program_add_float(parser_t *pp, float i) {
 	*(float*)(pp->program + pp->program_counter) = i;
 	pp->program_counter += sizeof(float);
 #endif
-	//printf("program_add_float(%f)\n", i);
+	//vm_printf("program_add_float(%f)\n", i);
 }
 
 static void program_add_short(parser_t *pp, int i) {
@@ -650,7 +650,7 @@ static void program_add_short(parser_t *pp, int i) {
 
 	*(short*)(pp->program + pp->program_counter) = i;
 	pp->program_counter += sizeof(short);
-	printf("program_add_short(%d) => %x, %x\n", i, i & 0xff, (i >> 8) & 0xff);
+	vm_printf("program_add_short(%d) => %x, %x\n", i, i & 0xff, (i >> 8) & 0xff);
 #endif
 }
 
@@ -670,7 +670,7 @@ static int parser_variable(parser_t *pp, const char *id, bool load, bool create_
 
 		if (!v) {
 			if (!create_if_not_exist) {
-				printf("variable '%s' does not exist!\n", id);
+				vm_printf("variable '%s' does not exist!\n", id);
 				return 1;
 			}
 			else {
@@ -729,7 +729,7 @@ static int parser_factor(parser_t *pp) {
 		}
 
 		if (!found) {
-			printf("function '%s' was not found\n", pp->string);
+			vm_printf("function '%s' was not found\n", pp->string);
 			return 1;
 		}
 	}
@@ -835,7 +835,7 @@ static int parser_factor(parser_t *pp) {
 
 		no_args_lol:
 
-			//printf("function call with RETURN !!!! %s()\n", id);
+			//vm_printf("function call with RETURN !!!! %s()\n", id);
 			{
 				bool found = false;
 				for (int i = 0; i <= pp->code_segment_size; i++) {
@@ -853,7 +853,7 @@ static int parser_factor(parser_t *pp) {
 				if (!found) {
 
 					//just add it to the 'builtin' funcs and maybe that works? :D
-					//printf("function '%s' does not exist!\n", id);
+					//vm_printf("function '%s' does not exist!\n", id);
 					program_add_opcode(pp, OP_CALL_BUILTIN);
 
 					scr_istring_t *istr = NULL;
@@ -916,7 +916,7 @@ static int parser_factor(parser_t *pp) {
 				int prevop = program_previous_opcode(pp);
 				if (prevop == -1 || prevop == OP_CAST)
 				{
-					printf("we need a prevop to do a cast!\n");
+					vm_printf("we need a prevop to do a cast!\n");
 					return 1;
 				}
 
@@ -991,7 +991,7 @@ static int parser_factor(parser_t *pp) {
 					++i;
 				} while (pp_accept(pp, TK_COMMA));
 				if (i != 2) {
-					printf("invalid vector!\n");
+					vm_printf("invalid vector!\n");
 					return 1;
 				}
 				program_add_opcode(pp, OP_PUSH_VECTOR);
@@ -1003,7 +1003,7 @@ static int parser_factor(parser_t *pp) {
 	}
 	else {
 		int lineno = parser_get_location(pp);
-		printf("factor: syntax error got %s at %d\n", lex_token_strings[pp->token], lineno);
+		vm_printf("factor: syntax error got %s at %d\n", lex_token_strings[pp->token], lineno);
 		return 1;
 	}
 
@@ -1185,7 +1185,7 @@ static var_t *parser_create_local_variable(parser_t *pp) {
 			return v;
 		}
 	}
-	printf("MAX LOCAL VARIABLES REACHED!!!\n");
+	vm_printf("MAX LOCAL VARIABLES REACHED!!!\n");
 	return NULL;
 }
 
@@ -1218,7 +1218,7 @@ static var_t *parser_find_local_variable(parser_t *pp, const char* n) {
 static int parser_encapsulated_block(parser_t *pp) {
 	int at;
 	if (TK_EOF == parser_locate_token(pp, TK_RBRACE, &at, TK_LBRACE)) {
-		printf("BLOCK: could not find TK_RBRACE\n");
+		vm_printf("BLOCK: could not find TK_RBRACE\n");
 		return 1;
 	}
 	else {
@@ -1261,7 +1261,7 @@ accept_ident:
 			return 1;
 		if (!pp_expect(pp, TK_IDENT))
 			return 1;
-		printf("%s\n", id_path);
+		vm_printf("%s\n", id_path);
 		snprintf(id, sizeof(id), "%s", pp->string);
 	}
 
@@ -1272,7 +1272,7 @@ accept_ident:
 	bool is_array = false;
 	if (pp_accept(pp, TK_DOT) || pp_accept(pp, TK_LBRACK)) {
 		int obj_tk = pp->token;
-		//printf("TK_DOT ACCEPTED IS_OBJ=TRUE\n");
+		//vm_printf("TK_DOT ACCEPTED IS_OBJ=TRUE\n");
 		is_obj = true;
 		var_t *v;
 
@@ -1391,7 +1391,7 @@ accept_ident:
 		int at;
 
 		if (TK_EOF == parser_locate_token(pp, TK_RPAREN, &at, TK_LPAREN)) {
-			printf("could not find rparen!\n");
+			vm_printf("could not find rparen!\n");
 			return 1;
 		}
 		else {
@@ -1430,11 +1430,11 @@ accept_ident:
 
 			pp->curpos = at;
 			//hehe
-			//printf("cur ch=%c\n", pp->scriptbuffer[pp->curpos]);
+			//vm_printf("cur ch=%c\n", pp->scriptbuffer[pp->curpos]);
 
 			if (!pp_accept(pp, TK_LBRACE)) {
 				//func call
-				//printf("function call %s()\n", id);
+				//vm_printf("function call %s()\n", id);
 
 				bool found = false;
 				for (int i = 0; i <= pp->code_segment_size; i++) {
@@ -1463,7 +1463,7 @@ accept_ident:
 
 				if (!found) {
 					//just add it to the 'builtin' funcs and maybe that works? :D
-					//printf("function '%s' does not exist!\n", id);
+					//vm_printf("function '%s' does not exist!\n", id);
 					program_add_opcode(pp, OP_CALL_BUILTIN);
 
 					scr_istring_t *istr = NULL;
@@ -1478,15 +1478,15 @@ accept_ident:
 			}
 			else {
 
-				//printf("func definition %s\n", id);
+				//vm_printf("func definition %s\n", id);
 
 				if (TK_EOF == parser_locate_token(pp, TK_RBRACE, &at, TK_LBRACE)) {
-					printf("could not find rbrace :D\n");
+					vm_printf("could not find rbrace :D\n");
 					return 1;
 				}
 				else {
 
-					//printf("orig_loc=%d,pc=%d\n", seg->original_loc, pc);
+					//vm_printf("orig_loc=%d,pc=%d\n", seg->original_loc, pc);
 					if (!strcmp(id, "main"))
 						pp->main_segment = pp->code_segment_size + 1;
 
@@ -1501,7 +1501,7 @@ accept_ident:
 					int block = parser_block(pp, start, end);
 
 					if (block) {
-						printf("BLOCK=%d,curpos=%d,at=%d\n", block, start, end);
+						vm_printf("BLOCK=%d,curpos=%d,at=%d\n", block, start, end);
 						return block;
 					}
 
@@ -1559,7 +1559,7 @@ static int parser_statement(parser_t *pp) {
 		for (int i = 0; i < structs.size; i++)
 		{
 			array_get(&structs, cstruct_t, cs, i);
-			//printf("cs size = %d %s\n", cs->size, cs->name);
+			//vm_printf("cs size = %d %s\n", cs->size, cs->name);
 			array_push(&pp->structs, cs);
 		}
 		array_free(&structs);
@@ -1765,7 +1765,7 @@ static int parser_statement(parser_t *pp) {
 		int at;
 
 		if (TK_EOF == parser_locate_token(pp, TK_RBRACE, &at, TK_LBRACE)) {
-			printf("could not find rbrace!\n");
+			vm_printf("could not find rbrace!\n");
 			goto unexpected_tkn;
 		}
 		else {
@@ -1774,7 +1774,7 @@ static int parser_statement(parser_t *pp) {
 			int block = parser_block(pp, start, end);
 
 			if (block) {
-				printf("BLOCK=%d,curpos=%d,at=%d\n", block, start, end);
+				vm_printf("BLOCK=%d,curpos=%d,at=%d\n", block, start, end);
 				return block;
 			}
 
@@ -1783,9 +1783,9 @@ static int parser_statement(parser_t *pp) {
 				program_add_int(pp, cond_start);
 			}
 			//set all the temporary jumps (0) to the actual over skipping location
-			printf("num_jumps=%d\n", num_jumps);
+			vm_printf("num_jumps=%d\n", num_jumps);
 			for (int i = 0; i < num_jumps; i++) {
-				printf("jump [type: %s], modif_loc=%d, jmp_to=%d\n", lex_token_strings[jumps[i].type], jumps[i].modif_location, jumps[i].jump_location);
+				vm_printf("jump [type: %s], modif_loc=%d, jmp_to=%d\n", lex_token_strings[jumps[i].type], jumps[i].modif_location, jumps[i].jump_location);
 #if 1
 				if (jumps[i].type == TK_AND_AND)
 					*(int*)(pp->program + jumps[i].modif_location) = pp->program_counter;
@@ -1838,7 +1838,7 @@ static int parser_statement(parser_t *pp) {
 		parser_display_history(pp);
 		int lineno = parser_get_location(pp);
 
-		printf("unexpected token: %s at %d (%c) at line %d\n", lex_token_strings[pp->token], pp->curpos, pp->scriptbuffer[pp->curpos], lineno);
+		vm_printf("unexpected token: %s at %d (%c) at line %d\n", lex_token_strings[pp->token], pp->curpos, pp->scriptbuffer[pp->curpos], lineno);
 		return 1;
 	}
 	return 0;
@@ -2015,7 +2015,7 @@ int pre_err(parser_t *pp, const char *errstr, ...) {
 		va_start(argptr, errstr);
 		vsprintf(dest, errstr, argptr);
 		va_end(argptr);
-		printf("%s\n", dest);
+		vm_printf("%s\n", dest);
 	}
 	pre_t *pre = (pre_t*)pp->userdata;
 	kstring_free(&pre->macro);
@@ -2071,7 +2071,7 @@ int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines, vector *libs)
 	{
 		if (pp_accept(pp, TK_EOF))
 		{
-			//printf("breaking already\n");
+			//vm_printf("breaking already\n");
 			break;
 		}
 		kstring_clear(&pre.contents);
@@ -2080,14 +2080,14 @@ int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines, vector *libs)
 		int pft = pp_tell(pp); //position before token
 
 		int token = parser_read_next_token(pp);
-		//printf("token = %s %s\n", lex_token_strings[token], pp->string);
+		//vm_printf("token = %s %s\n", lex_token_strings[token], pp->string);
 		switch (token)
 		{
 
 		def_behav:
 		default: {
 			//just copy the tokens i guess
-			//printf("token=%s\n", lex_token_strings[token]);
+			//vm_printf("token=%s\n", lex_token_strings[token]);
 			int cur = pp_tell(pp);
 			for (int i = pft; i < cur; ++i)
 				kstring_push_back(out, buf[i]);
@@ -2102,7 +2102,7 @@ int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines, vector *libs)
 				def_t *d = (def_t*)vector_get(defines, i);
 				if (!strcmp(d->name, pp->string))
 				{
-					//printf("found definition %s\n", d->name);
+					//vm_printf("found definition %s\n", d->name);
 					//add the definition
 					kstring_addk(out, &d->value);
 					ff = true;
@@ -2192,7 +2192,7 @@ int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines, vector *libs)
 						break;
 				}
 				//fix maybe later require a space in the define?
-				//printf("DEFINE %s = %s\n", kstring_get(&pre.macro), kstring_get(&pre.contents));
+				//vm_printf("DEFINE %s = %s\n", kstring_get(&pre.macro), kstring_get(&pre.contents));
 				//pp_restore(pp);
 
 				def_t *d = (def_t*)xmalloc(sizeof(def_t));
@@ -2223,7 +2223,7 @@ int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines, vector *libs)
 
 				int cur = pp_tell(pp);
 
-				//printf("contents=%s\n", kstring_get(&pre.contents));
+				//vm_printf("contents=%s\n", kstring_get(&pre.contents));
 				char *fbuf = NULL;
 				size_t fsize = 0;
 				if (read_text_file(kstring_get(&pre.contents), &fbuf, (int*)&fsize))
@@ -2239,7 +2239,7 @@ int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines, vector *libs)
 					kstring_free(&tmp);
 					return pre_err(pp, "failed to pre_buf recursively!");
 				}
-				//printf("tmp = %s\n", kstring_get(&tmp));
+				//vm_printf("tmp = %s\n", kstring_get(&tmp));
 				kstring_addk(out, &tmp);
 				kstring_free(&tmp);
 			}
@@ -2334,11 +2334,11 @@ int parser_compile_string(const char *scriptbuf, char **out_program, int *out_pr
 	pre_clear_defines(&defines);
 	//xfree(pp->scriptbuffer);
 	pp->scriptbuffer = kstring_get(&processed);
-	//printf("processed = %s\n", pp->scriptbuffer);
+	//vm_printf("processed = %s\n", pp->scriptbuffer);
 	pp->scriptbuffersize = kstring_length(&processed);
 	//return 1;
-	//printf("Compiling '%s'\n", pp->scriptbuffer);
-	//printf("scriptbuffer size = %d\n",pp->scriptbuffersize);
+	//vm_printf("Compiling '%s'\n", pp->scriptbuffer);
+	//vm_printf("scriptbuffer size = %d\n",pp->scriptbuffersize);
 
 	pp->program = (char*)xmalloc(pp->scriptbuffersize * 4); //i don't think the actual program will be this size lol
 	memset(pp->program, OP_NOP, pp->scriptbuffersize);
@@ -2380,12 +2380,12 @@ int parser_compile_string(const char *scriptbuf, char **out_program, int *out_pr
 #if 1
 	tinystream_t ts;
 	ts_init(&ts);
-	//printf("structs size = %d\n", pp->structs.size);
+	//vm_printf("structs size = %d\n", pp->structs.size);
 	ts32(&ts, vector_count(&libstrings));
 	for (int i = 0; i < vector_count(&libstrings); i++)
 	{
 		dynstring s = (dynstring)vector_get(&libstrings, i);
-		//printf("adding s = %s\n", s);
+		//vm_printf("adding s = %s\n", s);
 		for (int k = 0; k < dynlen(&s); k++)
 		{
 			ts8(&ts, s[k]);
@@ -2414,7 +2414,7 @@ int parser_compile_string(const char *scriptbuf, char **out_program, int *out_pr
 			ts8(&ts, 0);
 			ts32(&ts, field->offset);
 			ts32(&ts, field->size);
-			//printf("field->type=%d\n", field->type);
+			//vm_printf("field->type=%d\n", field->type);
 			ts32(&ts, field->type);
 			ts32(&ts, 0); //TODO FIX THIS
 		}
@@ -2443,12 +2443,12 @@ int parser_compile_string(const char *scriptbuf, char **out_program, int *out_pr
 
 					int new_pos = 0;
 					for (int f = 0; f <= pp->code_segment_size; f++) {
-						//printf("assigned_loc=%d,seg->reloc=%d\n", pp->code_segments[f].assigned_loc, seg->relocations[k]);
+						//vm_printf("assigned_loc=%d,seg->reloc=%d\n", pp->code_segments[f].assigned_loc, seg->relocations[k]);
 
 						if (pp->code_segments[f].assigned_loc == pp->program[seg->relocations[k]]) {
 							//if not found ouch
 							opcode = new_pos;
-							//printf("new_opcode=%d\n", new_pos);
+							//vm_printf("new_opcode=%d\n", new_pos);
 						}
 						new_pos += pp->code_segments[f].size;
 					}
@@ -2525,7 +2525,7 @@ int parser_compile(const char *filename, char **out_program, int *out_program_si
 	char *sb;
 	size_t sbs;
 	if (read_text_file(filename, &sb, (int*)&sbs)) {
-		printf("failed to read file '%s'\n", filename);
+		vm_printf("failed to read file '%s'\n", filename);
 		return 1;
 	}
 	return parser_compile_string(sb, out_program, out_program_size);

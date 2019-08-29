@@ -111,6 +111,7 @@ struct vm_s {
 	int numstockfunctionsets;
 
 	void *m_userpointer;
+	int (*m_printf_hook)(const char *, ...);
 
 	dynarray structs;
 	dynarray libs;
@@ -118,6 +119,8 @@ struct vm_s {
 
 #define vm_stack vm->thrunner->stack
 #define vm_registers vm->thrunner->registers
+//#define vm_printf vm->m_printf_hook
+
 //#define stack_push(vm, x) (vm->thrunner==NULL?vm->stack[++vm->registers[REG_SP]]:vm->thrunner->stack[++vm_registers[REG_SP]] = (intptr_t)x)
 //#define stack_pop(vm) (vm->thrunner==NULL?vm->stack[vm->registers[REG_SP]--]:vm->thrunner->stack[vm_registers[REG_SP]--])
 
@@ -128,7 +131,7 @@ static VM_INLINE void stack_push(vm_t *vm, intptr_t x) {
 		vm->stack[++vm->registers[REG_SP]] = x;
 	else {
 		if (vm->thrunner->registers[REG_SP] + 1 >= vm->thrunner->stacksize) {
-			printf("REG_SP=%d,STACKSIZE=%d\n", vm->thrunner->registers[REG_SP], vm->thrunner->stacksize);
+			vm_printf("REG_SP=%d,STACKSIZE=%d\n", vm->thrunner->registers[REG_SP], vm->thrunner->stacksize);
 			getchar();
 			return;
 		}
@@ -142,7 +145,7 @@ static VM_INLINE void stack_push_vv(vm_t *vm, varval_t *x) {
 	{
 		int cast_type = vm->cast_stack[--vm->cast_stack_ptr];
 		stack_push_vv(vm, vv_cast(vm, x, cast_type));
-		//printf("desired cast type = %s, current = %s\n", e_var_types_strings[cast_type], e_var_types_strings[VV_TYPE(vv)]);
+		//vm_printf("desired cast type = %s, current = %s\n", e_var_types_strings[cast_type], e_var_types_strings[VV_TYPE(vv)]);
 		se_vv_free(vm, x);
 		return;
 	}
