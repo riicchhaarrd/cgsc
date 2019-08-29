@@ -2237,8 +2237,10 @@ static int pre_buf(vm_compiler_opts_t *opts, char *buf, size_t sz, kstring_t *ou
 				if (pre_buf(opts, fbuf, fsize, &tmp, defines, libs))
 				{
 					kstring_free(&tmp);
+					free(fbuf); //free mem
 					return pre_err(pp, "failed to pre_buf recursively!");
 				}
+				free(fbuf); //free mem
 				//vm_printf("tmp = %s\n", kstring_get(&tmp));
 				kstring_addk(out, &tmp);
 				kstring_free(&tmp);
@@ -2535,5 +2537,7 @@ int parser_compile(const char *filename, char **out_program, int *out_program_si
 		vm_printf("failed to read file '%s'\n", filename);
 		return 1;
 	}
-	return parser_compile_string(sb, out_program, out_program_size, NULL);
+	int ret = parser_compile_string(sb, out_program, out_program_size, NULL);
+	free(sb); //free mem
+	return ret;
 }
