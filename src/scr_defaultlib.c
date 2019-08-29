@@ -991,7 +991,7 @@ int sf_eval(vm_t *vm)
 
 	char *script;
 	int script_size;
-	if (parser_compile_string(str, &script, &script_size)) {
+	if (parser_compile_string(str, &script, &script_size, NULL)) {
 		vm_printf("Failed compiling '%s'.\n", str);
 		//vm_mem_free(vm, str);
 		return 0;

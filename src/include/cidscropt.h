@@ -25,8 +25,13 @@ typedef struct vm_s vm_t;
 typedef struct varval_s varval_t;
 typedef struct vm_thread_s vm_thread_t;
 
+typedef struct
+{
+	int(*read_file)(const char *filename, char **buf, int *filesize);
+} vm_compiler_opts_t;
+
 int parser_compile(const char *filename, char **out_program, int *program_size);
-int parser_compile_string(const char *str, char **out_program, int *program_size);
+int parser_compile_string(const char *str, char **out_program, int *program_size, vm_compiler_opts_t* opts);
 
 int vm_get_num_active_threadrunners(vm_t *vm);
 

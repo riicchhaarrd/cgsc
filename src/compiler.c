@@ -2051,7 +2051,7 @@ int pp_locate(parser_t *pp, int token, int *invalid_tokens)
 	return ret;
 }
 
-int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines, vector *libs)
+static int pre_buf(vm_compiler_opts_t *opts, char *buf, size_t sz, kstring_t *out, vector* defines, vector *libs)
 {
 	parser_t *pp = (parser_t*)xmalloc(sizeof(parser_t));
 	parser_init(pp);
@@ -2226,7 +2226,7 @@ int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines, vector *libs)
 				//vm_printf("contents=%s\n", kstring_get(&pre.contents));
 				char *fbuf = NULL;
 				size_t fsize = 0;
-				if (read_text_file(kstring_get(&pre.contents), &fbuf, (int*)&fsize))
+				if (opts->read_file(kstring_get(&pre.contents), &fbuf, (int*)&fsize))
 				{
 					return pre_err(pp, "failed to open include file '%s'!", kstring_get(&pre.contents));
 				}
@@ -2234,7 +2234,7 @@ int pre_buf(char *buf, size_t sz, kstring_t *out, vector* defines, vector *libs)
 				kstring_init(&tmp);
 
 				//process this file aswell recursively
-				if (pre_buf(fbuf, fsize, &tmp, defines, libs))
+				if (pre_buf(opts, fbuf, fsize, &tmp, defines, libs))
 				{
 					kstring_free(&tmp);
 					return pre_err(pp, "failed to pre_buf recursively!");
@@ -2301,8 +2301,15 @@ void ts32(tinystream_t *ts, uint32_t n)
 	ts->offset += 4;
 }
 
-int parser_compile_string(const char *scriptbuf, char **out_program, int *out_program_size)
+int parser_compile_string(const char *scriptbuf, char **out_program, int *out_program_size, vm_compiler_opts_t *opts)
 {
+	static vm_compiler_opts_t defaultopts = {
+		.read_file = read_text_file
+	};
+
+	if (!opts)
+		opts = &defaultopts;
+
 	*out_program = NULL;
 	*out_program_size = 0;
 
@@ -2320,7 +2327,7 @@ int parser_compile_string(const char *scriptbuf, char **out_program, int *out_pr
 	vector libstrings;
 	vector_init(&libstrings);
 
-	if (pre_buf(pp->scriptbuffer, pp->scriptbuffersize, &processed, &defines, &libstrings)) {
+	if (pre_buf(opts, pp->scriptbuffer, pp->scriptbuffersize, &processed, &defines, &libstrings)) {
 		kstring_free(&processed);
 		pre_clear_defines(&defines);
 		pre_clear_libstrings(&libstrings);
@@ -2528,5 +2535,5 @@ int parser_compile(const char *filename, char **out_program, int *out_program_si
 		vm_printf("failed to read file '%s'\n", filename);
 		return 1;
 	}
-	return parser_compile_string(sb, out_program, out_program_size);
+	return parser_compile_string(sb, out_program, out_program_size, NULL);
 }
