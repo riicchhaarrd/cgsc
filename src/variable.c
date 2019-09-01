@@ -395,7 +395,22 @@ void se_vv_free_force(vm_t *vm, varval_t *vv) {
 	se_vv_free(vm, vv);
 }
 
-int se_vv_free_r(vm_t *vm, varval_t *vv, const char *_file, int _line) {
+bool se_vv_is_freeable(vm_t *vm, varval_t *vv)
+{
+	if (!vv)
+		return false;
+
+	if (VV_HAS_FLAG(vv, VF_NOFREE))
+		return false;
+
+	if (vv->refs > 0)
+		return false;
+	return true;
+}
+
+int se_vv_free_r(vm_t *vm, varval_t *vv, const char *_file, int _line)
+{
+#if 0
 	if (!vv) {
 		//vm_printf("no need to free null!\n");
 		return 1;
@@ -408,6 +423,10 @@ int se_vv_free_r(vm_t *vm, varval_t *vv, const char *_file, int _line) {
 		//vm_printf("VV->REFS > 0 (%d, TYPE=%s)\n", vv->refs, e_var_types_strings[vv->type]);
 		return 1;
 	}
+#endif
+
+	if (!se_vv_is_freeable(vm, vv))
+		return 1;
 
 	--vars_created;
 #if 0

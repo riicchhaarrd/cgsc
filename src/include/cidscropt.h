@@ -16,6 +16,11 @@ typedef enum {
 	E_VM_RET_ERROR,
 } e_vm_return_codes;
 
+typedef enum
+{
+	E_VM_ERROR /* todo add more specific error codes */
+} e_vm_error_codes;
+
 typedef struct
 {
 	uint32_t code_offset;
@@ -143,6 +148,9 @@ typedef struct {
 	void(*deconstructor)(vm_t*, void*);
 	void *obj; //ptr to the class/struct object
 	int type;
+	/* works for just simple notifications, but for stack / passing things moved to its own type */
+	//int notifiers[MAX_NOTIFIER_STRINGS];
+	//uint32_t notified; //not needed atm
 } vt_object_t;
 
 typedef double vm_scalar_t;
@@ -198,6 +206,7 @@ varval_t *se_vv_create(vm_t*, e_var_types_t);
 varval_t *se_vv_copy(vm_t*, varval_t *vv);
 void se_vv_remove_reference(vm_t *vm, varval_t *vv);
 void se_vv_set_field(vm_t *vm, varval_t *vv, int key, varval_t *value);
+bool se_vv_is_freeable(vm_t *vm, varval_t *vv);
 #define se_vv_free(a,b) (se_vv_free_r(a,b,__FILE__,__LINE__))
 int se_vv_free_r(vm_t*, varval_t *vv,const char *,int);
 void se_vv_free_force(vm_t *vm, varval_t *vv);

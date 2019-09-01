@@ -1969,15 +1969,140 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 			}
 			END_PERF(run_thread);
 
-			if (thr->wait <= 0) {
+			if (!vm_thread_is_stalled(vm,thr)) {
 				vm_execute(vm, OP_POP); //retval
 				thr->active = false;
 				--vm->numthreadrunners;
+				vm_thread_reset_events(vm, thr); //should kind of already have no events, otherwise we wouldn't end up here mhm?
 			}
 
 			END_PERF(start)
 
 			vm->thrunner=saverunner; //restore prev thread
+		} break;
+
+		case OP_ENDON_EVENT_STRING:
+		{
+			//note if you reload e.g player script objects and don't reload the vm fully, then you may end up deadlocking that thread/coroutine..
+			varval_t *object = (varval_t*)stack_pop(vm);
+			if (VV_TYPE(object) != VAR_TYPE_OBJECT)
+			{
+				vm_printf("not an object %s", VV_TYPE_STRING(object));
+				se_vv_free(vm, object);
+				return E_VM_RET_ERROR;
+			}
+			if (se_vv_is_freeable(vm, object))
+			{
+				vm_printf("object is freed");
+				se_vv_free(vm, object);
+				return E_VM_RET_ERROR;
+			}
+			int event_string_index = read_int(vm);
+			if (event_string_index >= vm->istringlistsize)
+			{
+				vm_printf("ev > max\n");
+				return E_VM_RET_ERROR;
+			}
+			const char *event_string = vm->istringlist[event_string_index].string;
+			unsigned int start = vm->thrunner->eventstring % VM_MAX_EVENTS;
+
+			for (unsigned int i = 0; i < VM_MAX_EVENTS; ++i)
+			{
+				unsigned int offset = (start + i) % VM_MAX_EVENTS;
+				if (offset == start && vm->thrunner->numeventstrings > 0) break; //can't use current event string
+				vm_event_string_t *ev = &vm->thrunner->eventstrings[offset];
+				if (!ev->inuse)
+				{
+					ev->string = event_string_index;
+					ev->type = 1;
+					ev->object = object;
+					ev->inuse = true;
+					break;
+				}
+			}
+		} break;
+
+		case OP_NOTIFY_EVENT_STRING:
+		{
+			varval_t *object = (varval_t*)stack_pop(vm);
+			if (VV_TYPE(object) != VAR_TYPE_OBJECT)
+			{
+				vm_printf("not an object %s", VV_TYPE_STRING(object));
+				se_vv_free(vm, object);
+				return E_VM_RET_ERROR;
+			}
+			if (se_vv_is_freeable(vm, object))
+			{
+				vm_printf("object is freed");
+				se_vv_free(vm, object);
+				return E_VM_RET_ERROR;
+			}
+			int numargs = read_int(vm);
+			int event_string_index = read_int(vm);
+			if (event_string_index >= vm->istringlistsize)
+			{
+				vm_printf("ev > max\n");
+				return E_VM_RET_ERROR;
+			}
+			vm_event_t n;
+			n.name = event_string_index;
+			n.object = object;
+			n.numargs = numargs;
+
+			for (int i = numargs; i--;) {
+				varval_t *vv = (varval_t*)stack_pop(vm);
+				if (VV_USE_REF(vv))
+					vv->refs++;
+				n.arguments[i] = (intptr_t)vv;
+			}
+			array_push(&vm->events, &n);
+		} break;
+
+		case OP_WAIT_EVENT_STRING:
+		{
+			//note if you reload e.g player script objects and don't reload the vm fully, then you may end up deadlocking that thread/coroutine..
+			varval_t *object = (varval_t*)stack_pop(vm);
+			if (VV_TYPE(object) != VAR_TYPE_OBJECT)
+			{
+				vm_printf("not an object %s", VV_TYPE_STRING(object));
+				se_vv_free(vm, object);
+				return E_VM_RET_ERROR;
+			}
+			if (se_vv_is_freeable(vm, object))
+			{
+				vm_printf("object is freed");
+				se_vv_free(vm, object);
+				return E_VM_RET_ERROR;
+			}
+			int loc = read_int(vm);
+			int event_string_index = read_int(vm);
+			if (event_string_index >= vm->istringlistsize)
+			{
+				vm_printf("ev > max\n");
+				return E_VM_RET_ERROR;
+			}
+			int numargs = read_int(vm);
+			const char *event_string = vm->istringlist[event_string_index].string;
+			unsigned int start = vm->thrunner->eventstring % VM_MAX_EVENTS;
+
+			for (unsigned int i = 0; i < VM_MAX_EVENTS; ++i)
+			{
+				unsigned int offset = (start + i) % VM_MAX_EVENTS;
+				if (offset == start && vm->thrunner->numeventstrings > 0) break; //can't use current event string
+				vm_event_string_t *ev = &vm->thrunner->eventstrings[offset];
+				if (!ev->inuse)
+				{
+					ev->string = event_string_index;
+					ev->stackoffset = loc;
+					ev->object = object;
+					ev->inuse = true;
+					ev->type = 0;
+					ev->numargs = numargs;
+					++vm->thrunner->numeventstrings;
+					break;
+				}
+			}
+			return E_VM_RET_WAIT;
 		} break;
 
 		case OP_WAIT: {
@@ -2088,9 +2213,72 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 	return 0;
 }
 
+bool vm_thread_is_stalled(vm_t *vm, vm_thread_t *thr)
+{
+	return thr->wait > 0 || thr->numeventstrings > 0;
+}
+
+void vm_thread_reset_events(vm_t *vm, vm_thread_t *thr)
+{
+	thr->numeventstrings = 0;
+	thr->eventstring = 0;
+	for (int ii = 0; ii < VM_MAX_EVENTS; ++ii)
+		thr->eventstrings[ii].inuse = false;
+}
+
 int vm_run_active_threads(vm_t *vm, int frametime) {
 	vm_thread_t *thr = NULL;
 	int err = 0;
+
+	for (int evi = vm->events.size; evi--;)
+	{
+		array_get(&vm->events, vm_event_t, ev, evi);
+		//prob should swap the loops around 1024 once and potential 32 each instead of 32 potential and 1024 guaranteed each
+		for (int i = MAX_SCRIPT_THREADS; i--;) {
+			thr = &vm->threadrunners[i];
+
+			if (!thr->active)
+				continue;
+			if (thr->numeventstrings == 0)
+				continue;
+			for (unsigned int threvi = 0; threvi < VM_MAX_EVENTS; ++threvi)
+			{
+				vm_event_string_t *threadev = &thr->eventstrings[threvi];
+				if (!threadev->inuse)
+					continue;
+				if (threadev->object != ev->object)
+					continue;
+				if (threadev->string != ev->name)
+					continue;
+
+				threadev->inuse = false;
+				if (threadev->type == 1)
+				{
+					vm_thread_t *tmp = vm->thrunner;
+					vm->thrunner = thr;
+					vm_execute(vm, OP_POP); //retval
+					thr->active = false;
+					--vm->numthreadrunners;
+					vm->thrunner = tmp;
+					vm_thread_reset_events(vm, thr);
+					break;
+				}
+				else
+				{
+					--thr->numeventstrings;
+					++thr->eventstring; //move to next event
+				}
+			}
+		}
+
+		for (int argi = 0; argi < ev->numargs; ++argi)
+		{
+			se_vv_remove_reference(vm, ev->arguments[argi]);
+		}
+	}
+
+	array_init(&vm->events, vm_event_t);
+	array_free(&vm->events);
 
 	for (int i = MAX_SCRIPT_THREADS; i--;) {
 		thr=&vm->threadrunners[i];
@@ -2101,6 +2289,12 @@ int vm_run_active_threads(vm_t *vm, int frametime) {
 		//vm_printf("thr->wait (%d) -= %d\n", thr->wait, frametime);
 		if (thr->wait > 0) {
 			thr->wait -= frametime;
+			continue;
+		}
+		if (thr->numeventstrings > 0)
+		{
+			vm_event_string_t *ev = &thr->eventstrings[thr->eventstring];
+			printf("waiting for %s\n", vm->istringlist[ev->string].string);
 			continue;
 		}
 		{
@@ -2115,7 +2309,7 @@ int vm_run_active_threads(vm_t *vm, int frametime) {
 				}
 			}
 		}
-		if (thr->wait <= 0) {
+		if (!vm_thread_is_stalled(vm, thr)) {
 			vm_execute(vm, OP_POP); //retval
 			thr->active=false; //enough to clear it rofl
 			--vm->numthreadrunners;
@@ -2142,6 +2336,47 @@ int vm_exec_ent_thread_pointer(vm_t *vm, varval_t *new_self, int fp, int numargs
 	int ret = vm_execute(vm, OP_CALL_THREAD);
 	vm->self = saveself;
 	return ret;
+}
+
+int vm_notify(vm_t *vm, varval_t *variable, int stringindex, size_t numargs)
+{
+#if 0
+	if (VV_TYPE(variable) != VAR_TYPE_OBJECT)
+	{
+		vm_printf(vm, "vm_notify can only be used on types of objects\n");
+		return 1;
+	}
+
+	vt_object_t *obj = variable->as.obj;
+
+	vm_event_t n;
+	n.variable = variable;
+	n.numargs = numargs;
+
+	for (int i = numargs; i--;) {
+		varval_t *vv = (varval_t*)stack_pop(vm);
+		if (VV_USE_REF(vv))
+			vv->refs++;
+		n.arguments[i] = (intptr_t)vv;
+	}
+	array_push(&vm->events, &n);
+#endif //broken atm
+	return 0;
+}
+
+int vm_notify_string(vm_t *vm, varval_t *vv, const char *str, size_t numargs)
+{
+	unsigned long strhash = hash_string(str);
+	for (unsigned int i = 0; i < vm->istringlistsize; i++) {
+		vt_istring_t *istr = &vm->istringlist[i];
+		if (!istr->string)
+			continue;
+		unsigned long hash = hash_string(istr->string);
+		if (hash == strhash && !strcmp(str, istr->string))
+			return vm_notify(vm, vv, i, numargs);
+	}
+	//unable to find string
+	return 1;
 }
 
 int vm_exec_thread(vm_t *vm, const char *func_name, int numargs) {
@@ -2450,7 +2685,7 @@ vm_t *vm_create(const char *program, int programsize) {
 
 	array_init(&vm->structs, cstruct_t);
 	array_init(&vm->libs, vm_ffi_lib_t);
-
+	array_init(&vm->events, vm_event_t);
 	vector_init(&vm->ffi_callbacks);
 
 	vector_init(&vm->__mem_allocations);
@@ -2484,6 +2719,8 @@ vm_t *vm_create(const char *program, int programsize) {
 		thr->stacksize = VM_STACK_SIZE;
 		thr->stack = (intptr_t*)vm_mem_alloc(vm, thr->stacksize * sizeof(intptr_t));
 		vector_init(&thr->strings);
+		vm_thread_reset_events(vm, thr);
+		//memset(&thr->eventstrings, 0, sizeof(thr->eventstrings));
 	}
 	vm->numthreadrunners=0;
 	vm->thrunner = NULL;
@@ -2624,6 +2861,15 @@ void vm_free(vm_t *vm) {
 	int num_vars_left = vector_count(&vm->vars);
 	//vm_printf("num vars left =%d\n", num_vars_left);
 
+	for (int evi = vm->events.size; evi--;)
+	{
+		array_get(&vm->events, vm_event_t, ev, evi);
+		for (int argi = 0; argi < ev->numargs; ++argi)
+		{
+			se_vv_remove_reference(vm, ev->arguments[argi]);
+		}
+	}
+	array_free(&vm->events);
 	//first free the thread local vars so the refs get -1
 
 	vm_thread_t *thr = NULL;
@@ -2782,7 +3028,6 @@ void vm_free(vm_t *vm) {
 		array_free(&lib->functions);
 	}
 	array_free(&vm->libs);
-
 	free(vm);
 }
 

@@ -41,6 +41,17 @@ typedef struct {
 	int position;
 } vm_function_info_t;
 
+typedef struct
+{
+	unsigned int string;
+	unsigned int stackoffset;
+	int type;
+	varval_t *object;
+	bool inuse;
+	int numargs;
+} vm_event_string_t;
+
+#define VM_MAX_EVENTS (32)
 struct vm_thread_s {
 	char ffi_libname[256];
 	size_t stacksize;
@@ -50,9 +61,21 @@ struct vm_thread_s {
 	bool active;
 	//char string[512]; //used for getting string value types n stuff
 	vector strings;
+	vm_event_string_t eventstrings[VM_MAX_EVENTS]; //non ptr allocate once, don't wanna alloc/free too much mhm
+	unsigned int eventstring;
+	unsigned int numeventstrings;
 };
 
 typedef intptr_t vm_function_t;
+
+typedef struct
+{
+	size_t numargs;
+	intptr_t *arguments[16];//should be enough right
+	varval_t *object;
+	//int type;
+	int name;
+} vm_event_t;
 
 typedef struct
 {
@@ -115,6 +138,7 @@ struct vm_s {
 
 	dynarray structs;
 	dynarray libs;
+	dynarray events;
 };
 
 #define vm_stack vm->thrunner->stack
@@ -187,7 +211,8 @@ typedef struct
 	void *handle;
 } vm_ffi_lib_t;
 
-
+void vm_thread_reset_events(vm_t *vm, vm_thread_t *thr);
+bool vm_thread_is_stalled(vm_t *vm, vm_thread_t *thr);
 vm_ffi_lib_func_t *vm_library_function_get(vm_t *vm, vm_ffi_lib_t *lib, const char *n);
 vm_ffi_lib_t *vm_library_get(vm_t *vm, const char *n);
 vm_ffi_lib_func_t *vm_library_function_get_any(vm_t *vm, const char *n, vm_ffi_lib_t **which_lib);

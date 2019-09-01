@@ -1310,8 +1310,108 @@ accept_ident:
 			} while (pp_accept(pp, TK_LBRACK));
 		}
 	}
+	if (pp_accept(pp, TK_ENDON))
+	{
+		pp_expect(pp, TK_LPAREN);
+		pp_expect(pp, TK_STRING);
 
-	if (pp_accept(pp, TK_ASSIGN)
+		scr_istring_t *istr = NULL;
+		index = parser_find_indexed_string(pp, pp->string, &istr);
+
+		if (istr == NULL)
+			index = parser_create_indexed_string(pp, pp->string);
+
+		if (!pp_accept(pp, TK_RPAREN))
+		{
+			vm_printf("unexpected arguments");
+			return 1;
+		}
+		if (!is_obj && !is_array)
+		{
+			if (parser_variable(pp, id, true, false, NULL, OP_LOAD))
+				return 1;
+		}
+		program_add_opcode(pp, OP_ENDON_EVENT_STRING);
+		program_add_int(pp, index);
+	} else if (pp_accept(pp, TK_NOTIFY))
+	{
+		pp_expect(pp, TK_LPAREN);
+		pp_expect(pp, TK_STRING);
+
+		scr_istring_t *istr = NULL;
+		index = parser_find_indexed_string(pp, pp->string, &istr);
+
+		if (istr == NULL)
+			index = parser_create_indexed_string(pp, pp->string);
+
+		int numargs = 0;
+		if (!pp_accept(pp, TK_COMMA) && pp_accept(pp, TK_RPAREN))
+		{
+			//no args
+		}
+		else
+		{
+			do {
+				++numargs;
+				if (parser_expression(pp)) //auto pushes
+					return 1;
+			} while (pp_accept(pp, TK_COMMA));
+			pp_expect(pp, TK_RPAREN);
+		}
+		if (!is_obj && !is_array)
+		{
+			if (parser_variable(pp, id, true, false, NULL, OP_LOAD))
+				return 1;
+		}
+		program_add_opcode(pp, OP_NOTIFY_EVENT_STRING);
+		program_add_int(pp, numargs);
+		program_add_int(pp, index);
+	} else if (pp_accept(pp, TK_WAITTILL))
+	{
+		pp_expect(pp, TK_LPAREN);
+		pp_expect(pp, TK_STRING);
+		
+		scr_istring_t *istr = NULL;
+		index = parser_find_indexed_string(pp, pp->string, &istr);
+
+		if (istr == NULL)
+			index = parser_create_indexed_string(pp, pp->string);
+
+		int numargs = 0;
+		int startindex = -1;
+		if (!pp_accept(pp, TK_COMMA) && pp_accept(pp,TK_RPAREN))
+		{
+			//accepting no local vars
+		}
+		else
+		{
+			do {
+				++numargs;
+
+				if (!pp_accept(pp, TK_IDENT))
+					return 1;
+
+				var_t *v = parser_find_local_variable(pp, pp->string);
+				if (!v) {
+					v = parser_create_local_variable(pp);
+					strncpy(v->name, pp->string, sizeof(v->name) - 1);
+					v->name[sizeof(v->name) - 1] = '\0';
+				}
+				if (startindex == -1)
+					startindex = v->index;
+			} while (pp_accept(pp, TK_COMMA));
+			pp_expect(pp, TK_RPAREN);
+		}
+		if (!is_obj && !is_array)
+		{
+			if (parser_variable(pp, id, true, false, NULL, OP_LOAD))
+				return 1;
+		}
+		program_add_opcode(pp, OP_WAIT_EVENT_STRING);
+		program_add_int(pp, startindex);
+		program_add_int(pp, index);
+		program_add_int(pp, numargs);
+	} else if (pp_accept(pp, TK_ASSIGN)
 		||
 		pp_accept(pp, TK_PLUS_PLUS) ||
 		pp_accept(pp, TK_MINUS_MINUS) ||
