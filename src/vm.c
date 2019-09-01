@@ -2900,6 +2900,7 @@ void vm_free(vm_t *vm) {
 	for (int evi = vm->events.size; evi--;)
 	{
 		array_get(&vm->events, vm_event_t, ev, evi);
+		se_vv_remove_reference(vm, ev->object);
 		for (int argi = 0; argi < ev->numargs; ++argi)
 		{
 			se_vv_remove_reference(vm, ev->arguments[argi]);
