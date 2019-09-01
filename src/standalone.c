@@ -31,7 +31,7 @@ int main(int argc, char **argv) {
 	const char *filename = argv[1];
 #else
 	//const char *filename = "../examples/bench.gcx";
-	const char *filename = "C:/Users/R/Desktop/ore/deps/scripts/q.gsc";
+	const char *filename = "C:/Users/R/Desktop/ore/deps/scripts/wait.gsc";
 #ifdef _WIN32
 	SetCurrentDirectoryA("C:/Users/R/Desktop/ore/deps/scripts/");
 #endif
@@ -59,7 +59,8 @@ int main(int argc, char **argv) {
 	fwrite(script, 1, script_size, fp);
 	fclose(fp);
 #endif
-	vm = vm_create(script, script_size);
+	vm = vm_create();
+	vm_add_program(vm, script, script_size);
 	free(script);
 	vm_exec_thread(vm, "main", 0);
 

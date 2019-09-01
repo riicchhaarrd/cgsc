@@ -981,7 +981,7 @@ int sf_thread_run(vm_t *vm)
 	return 0;
 }
 #endif
-
+#if 0
 int sf_eval(vm_t *vm)
 {
 	const char *code = se_getstring(vm, 0);
@@ -1025,6 +1025,7 @@ int sf_eval(vm_t *vm)
 	stack_push_vv(vm, copy);
 	return 1;
 }
+#endif
 
 stockfunction_t std_scriptfunctions[] = {
 #ifdef _WIN32
@@ -1037,7 +1038,7 @@ stockfunction_t std_scriptfunctions[] = {
 	//{ "abs",sf_abs },
 	//{ "sinf",sf_m_sinf },
 	//{"cosf",sf_m_cosf},
-	{"eval", sf_eval},
+	//{"eval", sf_eval},
 	//{"exit", sf_exit},
 	{ "buffer", sf_buffer },
 	//{ "set_ffi_lib", sf_set_ffi_lib },

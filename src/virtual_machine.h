@@ -39,6 +39,7 @@ static const char *e_vm_reg_names[] = {
 typedef struct {
 	char name[256];
 	int position;
+	unsigned int program;
 } vm_function_info_t;
 
 typedef struct
@@ -64,6 +65,7 @@ struct vm_thread_s {
 	vm_event_string_t eventstrings[VM_MAX_EVENTS]; //non ptr allocate once, don't wanna alloc/free too much mhm
 	unsigned int eventstring;
 	unsigned int numeventstrings;
+	unsigned char *instr;
 };
 
 typedef intptr_t vm_function_t;
@@ -83,9 +85,15 @@ typedef struct
 	vm_function_t callback;
 } vm_ffi_callback_t;
 
+typedef struct
+{
+	unsigned char *data;
+	size_t size;
+} vm_program_t;
+
 struct vm_s {
-	char *program;
-	int program_size;
+	//char *program;
+	//int program_size;
 
 #if 1
 	void* (*__memory_allocator)(size_t);
@@ -139,6 +147,8 @@ struct vm_s {
 	dynarray structs;
 	dynarray libs;
 	dynarray events;
+	dynarray programs;
+	unsigned char *instr;
 };
 
 #define vm_stack vm->thrunner->stack
@@ -211,6 +221,7 @@ typedef struct
 	void *handle;
 } vm_ffi_lib_t;
 
+void vm_use_program(vm_t *vm, unsigned int program);
 void vm_thread_reset_events(vm_t *vm, vm_thread_t *thr);
 bool vm_thread_is_stalled(vm_t *vm, vm_thread_t *thr);
 vm_ffi_lib_func_t *vm_library_function_get(vm_t *vm, vm_ffi_lib_t *lib, const char *n);

@@ -323,19 +323,19 @@ static void print_registers(vm_t *vm) {
 }
 
 static uint8_t VM_INLINE read_byte(vm_t *vm) {
-	uint8_t op = vm->program[vm_registers[REG_IP]];
+	uint8_t op = vm->instr[vm_registers[REG_IP]];
 	++vm_registers[REG_IP];
 	return op;
 }
 
 static int VM_INLINE read_int(vm_t *vm) {
-	int i = *(int*)(vm->program + vm_registers[REG_IP]);
+	int i = *(int*)(vm->instr + vm_registers[REG_IP]);
 	vm_registers[REG_IP] += sizeof(int);
 	return i;
 }
 
 static float VM_INLINE read_float(vm_t *vm) {
-	float f = *(float*)(vm->program + vm_registers[REG_IP]);
+	float f = *(float*)(vm->instr + vm_registers[REG_IP]);
 	vm_registers[REG_IP] += sizeof(float);
 	return f;
 }
@@ -1928,6 +1928,7 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 			thr->wait=0;
 			thr->numargs=0;
 			thr->active = true;
+			thr->instr = vm->instr;
 			
 			//add new thread to list of threads for next frame if wait occurs etc
 			
@@ -1958,7 +1959,7 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 
 			START_PERF(run_thread);
 			while (vm->is_running && vm_registers[REG_IP] != 0) {
-				int thr_instr = vm->program[vm_registers[REG_IP]++];
+				int thr_instr = vm->instr[vm_registers[REG_IP]++];
 
 				int vm_ret = vm_execute(vm, thr_instr);
 				if (vm_ret == E_VM_RET_ERROR)
@@ -2330,9 +2331,10 @@ int vm_run_active_threads(vm_t *vm, int frametime) {
 			continue;
 		}
 		{
+			vm->instr = thr->instr;
 			vm->thrunner = thr;
 			while (vm->is_running && vm_registers[REG_IP] != 0) {
-				int instr = vm->program[vm->thrunner->registers[REG_IP]++];
+				int instr = vm->instr[vm->thrunner->registers[REG_IP]++];
 				if ((err = vm_execute(vm, instr)) != E_VM_RET_NONE) {
 					if (err == E_VM_RET_WAIT)
 						break;
@@ -2431,6 +2433,7 @@ int vm_exec_thread(vm_t *vm, const char *func_name, int numargs) {
 
 	if (fi == NULL)
 		return E_VM_RET_FUNCTION_NOT_FOUND;
+	vm_use_program(vm, fi->program);
 	return vm_exec_thread_pointer(vm, fi->position, numargs);
 }
 
@@ -2503,14 +2506,14 @@ vm_ffi_lib_func_t *vm_library_function_get(vm_t *vm, vm_ffi_lib_t *lib, const ch
 	return NULL;
 }
 
-static int vm_read_functions(vm_t *vm) {
-
-	int structs_start = *(int*)(vm->program + vm->program_size - sizeof(int));
+static int vm_read_functions(vm_t *vm, unsigned int program) {
+	array_get(&vm->programs, vm_program_t, prog, program);
+	int structs_start = *(int*)(prog->data + prog->size - sizeof(int));
 #if 1
 
 	//read the structs first
 	tinystreamreader_t tsr;
-	tsr_init(&tsr, &vm->program[structs_start], vm->program_size);
+	tsr_init(&tsr, &prog->data[structs_start], prog->size);
 
 	int numlibs = tsr32(&tsr);
 	for (int i = 0; i < numlibs; i++)
@@ -2597,25 +2600,25 @@ static int vm_read_functions(vm_t *vm) {
 	char id[4096] = { 0 };
 	int id_len = 0;
 
-	int start = *(int*)(vm->program + vm->program_size - sizeof(int) - sizeof(int));
-	int num_funcs = *(int*)(vm->program + vm->program_size - sizeof(int) - sizeof(int) - sizeof(int));
+	int start = *(int*)(prog->data + prog->size - sizeof(int) - sizeof(int));
+	int num_funcs = *(int*)(prog->data + prog->size - sizeof(int) - sizeof(int) - sizeof(int));
 
 	int at = start;
 
 	for (int i = 0; i < num_funcs; i++) {
-		int loc = *(int*)(vm->program + at);
+		int loc = *(int*)(prog->data + at);
 		at += sizeof(int);
 
 
 		id_len = 0;
-		int ch = vm->program[at];
-		while (at < vm->program_size && ch) {
-			id[id_len++] = ch = vm->program[at++];
+		int ch = prog->data[at];
+		while (at < prog->size && ch) {
+			id[id_len++] = ch = prog->data[at++];
 		}
 		id[id_len++] = 0;
 
 		vm_function_info_t *fi = (vm_function_info_t*)vm_mem_alloc(vm, sizeof(vm_function_info_t));
-
+		fi->program = program;
 
 		//fi->numlocalvars = *(uint16_t*)(vm->program + at);
 		//at += sizeof(uint16_t);
@@ -2631,16 +2634,16 @@ static int vm_read_functions(vm_t *vm) {
 	}
 
 	//read int of num refs called to builtins
-	int num_calls_to_builtin = *(int*)(vm->program + at);
+	int num_calls_to_builtin = *(int*)(prog->data + at);
 	at += sizeof(int);
 	//vm_printf("num_calls_to_builtin=%d\n", num_calls_to_builtin);
 	vt_istring_t *istr = NULL;
 	for (int i = 0; i < num_calls_to_builtin; i++) {
 
 		id_len = 0;
-		int ch = vm->program[at];
-		while (at < vm->program_size && ch) {
-			id[id_len++] = ch = vm->program[at++];
+		int ch = prog->data[at];
+		while (at < prog->size && ch) {
+			id[id_len++] = ch = prog->data[at++];
 		}
 		id[id_len++] = 0;
 		//vm_printf("ID=%s\n", id);
@@ -2694,13 +2697,37 @@ cstruct_t *vm_get_struct(vm_t *vm, unsigned int ind)
 	return cs;
 }
 
-vm_t *vm_create(const char *program, int programsize) {
+void vm_use_program(vm_t *vm, unsigned int program)
+{
+	array_get(&vm->programs, vm_program_t, p, program);
+	vm->instr = p->data;
+}
+
+int vm_add_program(vm_t *vm, unsigned char *buffer, size_t sz)
+{
+	vm_program_t prog;
+
+	prog.data = (char*)vm_mem_alloc(vm, sz);
+	memcpy(prog.data, (void*)&buffer[0], sz);
+	prog.size = sz;
+	array_push(&vm->programs, &prog);
+	if (vm_read_functions(vm, vm->programs.size - 1))
+	{
+		vm_free(vm);
+		return 1;
+	}
+	return 0;
+}
+
+vm_t *vm_create() {
 	vm_t *vm = NULL;
 	vm = (vm_t*)malloc(sizeof(vm_t));
 	if (vm == NULL) {
 		vm_printf("vm is NULL\n");
 		return vm;
 	}
+
+	vm->instr = NULL;
 
 	_vconst0.value[0] = (vm_scalar_t)0.0;
 	_vconst1.value[0] = (vm_scalar_t)1.0;
@@ -2733,9 +2760,9 @@ vm_t *vm_create(const char *program, int programsize) {
 	vm->level->refs = 1337; //will only free after vm frees yup
 	vm->self = NULL;
 
-	vm->program = (char*)vm_mem_alloc(vm, programsize);
-	memcpy(vm->program, (void*)&program[0], programsize);
-	vm->program_size = programsize;
+	//vm->program = (char*)vm_mem_alloc(vm, programsize);
+	//memcpy(vm->program, (void*)&program[0], programsize);
+	//vm->program_size = programsize;
 	vm->cast_stack_ptr = 0;
 
 #define INITIAL_ISTRING_LIST_SIZE (4096)
@@ -2761,11 +2788,7 @@ vm_t *vm_create(const char *program, int programsize) {
 	vm->numthreadrunners=0;
 	vm->thrunner = NULL;
 
-	if (vm_read_functions(vm))
-	{
-		vm_free(vm);
-		return NULL;
-	}
+	array_init(&vm->programs, vm_program_t);
 	vm->is_running = true; //not needed anymore?
 	return vm;
 }
@@ -2784,6 +2807,7 @@ int vm_exec_ent_thread(vm_t *vm, varval_t *new_self, const char *func_name, int 
 
 	if (fi == NULL)
 		return E_VM_RET_FUNCTION_NOT_FOUND;
+	vm_use_program(vm, fi->program);
 	return vm_exec_ent_thread_pointer(vm, new_self, fi->position, numargs);
 }
 
@@ -3049,7 +3073,7 @@ void vm_free(vm_t *vm) {
 	}
 	array_free(&vm->structs);
 
-	vm_mem_free(vm, vm->program);
+	//vm_mem_free(vm, vm->program);
 
 	for (int i = 0; i < vector_count(&vm->__mem_allocations); i++) {
 		void *p = vector_get(&vm->__mem_allocations, i);
@@ -3065,6 +3089,12 @@ void vm_free(vm_t *vm) {
 		array_free(&lib->functions);
 	}
 	array_free(&vm->libs);
+	for (unsigned int i = 0; i < vm->programs.size; ++i)
+	{
+		array_get(&vm->programs, vm_program_t, prog, i);
+		vm_mem_free(vm, prog->data);
+	}
+	array_free(&vm->programs);
 	free(vm);
 }
 
