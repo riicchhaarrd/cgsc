@@ -1991,12 +1991,14 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 				se_vv_free(vm, object);
 				return E_VM_RET_ERROR;
 			}
+#if 0
 			if (se_vv_is_freeable(vm, object))
 			{
 				vm_printf("object is freed");
 				se_vv_free(vm, object);
 				return E_VM_RET_ERROR;
 			}
+#endif
 			if (VV_USE_REF(object))
 				++object->refs;
 			int event_string_index = read_int(vm);
@@ -2033,12 +2035,14 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 				se_vv_free(vm, object);
 				return E_VM_RET_ERROR;
 			}
+#if 0
 			if (se_vv_is_freeable(vm, object))
 			{
 				vm_printf("object is freed");
 				se_vv_free(vm, object);
 				return E_VM_RET_ERROR;
 			}
+#endif
 			if (VV_USE_REF(object))
 				++object->refs;
 			int numargs = read_int(vm);
@@ -2072,12 +2076,14 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 				se_vv_free(vm, object);
 				return E_VM_RET_ERROR;
 			}
+#if 0
 			if (se_vv_is_freeable(vm, object))
 			{
 				vm_printf("object is freed");
 				se_vv_free(vm, object);
 				return E_VM_RET_ERROR;
 			}
+#endif
 			if (VV_USE_REF(object))
 				++object->refs;
 			int loc = read_int(vm);
@@ -2373,8 +2379,8 @@ int vm_notify(vm_t *vm, varval_t *object, int stringindex, size_t numargs)
 	}
 	if (se_vv_is_freeable(vm, object))
 	{
-		vm_printf("object would be freed");
-		return 1;
+		//vm_printf("object would be freed");
+		//return 1;
 	}
 	if (VV_USE_REF(object))
 		++object->refs;
