@@ -1997,6 +1997,8 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 				se_vv_free(vm, object);
 				return E_VM_RET_ERROR;
 			}
+			if (VV_USE_REF(object))
+				++object->refs;
 			int event_string_index = read_int(vm);
 			if (event_string_index >= vm->istringlistsize)
 			{
@@ -2037,6 +2039,8 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 				se_vv_free(vm, object);
 				return E_VM_RET_ERROR;
 			}
+			if (VV_USE_REF(object))
+				++object->refs;
 			int numargs = read_int(vm);
 			int event_string_index = read_int(vm);
 			if (event_string_index >= vm->istringlistsize)
@@ -2074,6 +2078,8 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 				se_vv_free(vm, object);
 				return E_VM_RET_ERROR;
 			}
+			if (VV_USE_REF(object))
+				++object->refs;
 			int loc = read_int(vm);
 			int event_string_index = read_int(vm);
 			if (event_string_index >= vm->istringlistsize)
@@ -2247,13 +2253,17 @@ int vm_run_active_threads(vm_t *vm, int frametime) {
 				if (!threadev->inuse)
 					continue;
 				if (threadev->object != ev->object)
-					continue;
+				{
+					if(threadev->object->as.obj->obj != ev->object->as.obj->obj)
+						continue;
+				}
 				if (threadev->string != ev->name)
 					continue;
 
 				vm_thread_t *tmp = vm->thrunner;
 				vm->thrunner = thr;
 				threadev->inuse = false;
+				se_vv_remove_reference(vm, threadev->object);
 				if (threadev->type == 1)
 				{
 					vm_execute(vm, OP_POP); //retval
@@ -2286,7 +2296,7 @@ int vm_run_active_threads(vm_t *vm, int frametime) {
 				vm->thrunner = tmp;
 			}
 		}
-
+		se_vv_remove_reference(vm, ev->object);
 		for (int argi = 0; argi < ev->numargs; ++argi)
 		{
 			se_vv_remove_reference(vm, ev->arguments[argi]);
@@ -2354,29 +2364,33 @@ int vm_exec_ent_thread_pointer(vm_t *vm, varval_t *new_self, int fp, int numargs
 	return ret;
 }
 
-int vm_notify(vm_t *vm, varval_t *variable, int stringindex, size_t numargs)
+int vm_notify(vm_t *vm, varval_t *object, int stringindex, size_t numargs)
 {
-#if 0
-	if (VV_TYPE(variable) != VAR_TYPE_OBJECT)
+	if (VV_TYPE(object) != VAR_TYPE_OBJECT)
 	{
 		vm_printf(vm, "vm_notify can only be used on types of objects\n");
 		return 1;
 	}
-
-	vt_object_t *obj = variable->as.obj;
+	if (se_vv_is_freeable(vm, object))
+	{
+		vm_printf("object would be freed");
+		return 1;
+	}
+	if (VV_USE_REF(object))
+		++object->refs;
 
 	vm_event_t n;
-	n.variable = variable;
+	n.name = stringindex;
+	n.object = object;
 	n.numargs = numargs;
-
+	memset(&n.arguments, 0, sizeof(n.arguments));
 	for (int i = numargs; i--;) {
 		varval_t *vv = (varval_t*)stack_pop(vm);
 		if (VV_USE_REF(vv))
 			vv->refs++;
-		n.arguments[i] = (intptr_t)vv;
+		n.arguments[i] = vv;
 	}
 	array_push(&vm->events, &n);
-#endif //broken atm
 	return 0;
 }
 

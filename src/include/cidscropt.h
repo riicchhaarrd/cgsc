@@ -44,7 +44,8 @@ int vm_run_active_threads(vm_t *vm, int);
 int vm_exec_thread_pointer(vm_t *vm, int fp, int numargs);
 int vm_exec_ent_thread_pointer(vm_t *vm, varval_t *new_self, int fp, int numargs);
 int vm_exec_thread(vm_t *vm, const char *func_name, int numargs);
-
+int vm_notify(vm_t *vm, varval_t *object, int stringindex, size_t numargs);
+int vm_notify_string(vm_t *vm, varval_t *vv, const char *str, size_t numargs);
 int vm_exec_ent_thread(vm_t *vm, varval_t *new_self, const char *func_name, int numargs);
 void *vm_get_user_pointer(vm_t*);
 void vm_set_user_pointer(vm_t*, void*);
