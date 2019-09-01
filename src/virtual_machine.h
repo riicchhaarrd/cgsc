@@ -71,7 +71,7 @@ typedef intptr_t vm_function_t;
 typedef struct
 {
 	size_t numargs;
-	intptr_t *arguments[16];//should be enough right
+	varval_t *arguments[16];//should be enough right
 	varval_t *object;
 	//int type;
 	int name;

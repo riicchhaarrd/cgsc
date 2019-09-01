@@ -2044,17 +2044,16 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 				vm_printf("ev > max\n");
 				return E_VM_RET_ERROR;
 			}
-			printf("numargs=%d,string=%s\n", numargs, vm->istringlist[event_string_index].string);
 			vm_event_t n;
 			n.name = event_string_index;
 			n.object = object;
-			//n.numargs = numargs;
-			array_init(&n.arguments, varval_t);
+			n.numargs = numargs;
+			memset(&n.arguments, 0, sizeof(n.arguments));
 			for (int i = numargs; i--;) {
 				varval_t *vv = (varval_t*)stack_pop(vm);
 				if (VV_USE_REF(vv))
 					vv->refs++;
-				array_push(&n.arguments, &vv);
+				n.arguments[i] = vv;
 			}
 			array_push(&vm->events, &n);
 		} break;
@@ -2252,36 +2251,50 @@ int vm_run_active_threads(vm_t *vm, int frametime) {
 				if (threadev->string != ev->name)
 					continue;
 
+				vm_thread_t *tmp = vm->thrunner;
+				vm->thrunner = thr;
 				threadev->inuse = false;
 				if (threadev->type == 1)
 				{
-					vm_thread_t *tmp = vm->thrunner;
-					vm->thrunner = thr;
 					vm_execute(vm, OP_POP); //retval
 					thr->active = false;
 					--vm->numthreadrunners;
-					vm->thrunner = tmp;
 					vm_thread_reset_events(vm, thr);
 					break;
 				}
 				else
 				{
+					int loc = threadev->stackoffset;
+					unsigned int maxargs = ev->numargs;
+					if (ev->numargs > threadev->numargs)
+						maxargs = threadev->numargs;
+					for (unsigned s_i = 0; s_i < maxargs; ++s_i)
+					{
+						varval_t *vv = ev->arguments[s_i];
+						varval_t *cur = (varval_t*)vm_stack[vm_registers[REG_BP] + loc + s_i];
+						if (VV_USE_REF(vv))
+							++vv->refs;
+						else
+							vv = se_vv_copy(vm, vv);
+						//vm_printf("vvrefs=%d,currefs=%d\n", vv->refs, cur ? cur->refs : 0);
+						se_vv_remove_reference(vm, cur);
+						vm_stack[vm_registers[REG_BP] + loc + s_i] = (intptr_t)vv;
+					}
 					--thr->numeventstrings;
 					++thr->eventstring; //move to next event
 				}
+				vm->thrunner = tmp;
 			}
 		}
 
-		for (int argi = 0; argi < ev->arguments.size; ++argi)
+		for (int argi = 0; argi < ev->numargs; ++argi)
 		{
-			array_get(&ev->arguments, varval_t, vv, argi);
-			se_vv_remove_reference(vm, vv);
+			se_vv_remove_reference(vm, ev->arguments[argi]);
 		}
-		array_free(&ev->arguments);
 	}
 
-	array_init(&vm->events, vm_event_t);
 	array_free(&vm->events);
+	array_init(&vm->events, vm_event_t);
 
 	for (int i = MAX_SCRIPT_THREADS; i--;) {
 		thr=&vm->threadrunners[i];
@@ -2297,7 +2310,7 @@ int vm_run_active_threads(vm_t *vm, int frametime) {
 		if (thr->numeventstrings > 0)
 		{
 			vm_event_string_t *ev = &thr->eventstrings[thr->eventstring];
-			printf("waiting for %s\n", vm->istringlist[ev->string].string);
+			//printf("waiting for %s\n", vm->istringlist[ev->string].string);
 			continue;
 		}
 		{
@@ -2867,10 +2880,9 @@ void vm_free(vm_t *vm) {
 	for (int evi = vm->events.size; evi--;)
 	{
 		array_get(&vm->events, vm_event_t, ev, evi);
-		for (int argi = 0; argi < ev->arguments.size; ++argi)
+		for (int argi = 0; argi < ev->numargs; ++argi)
 		{
-			array_get(&ev->arguments, varval_t, vv, argi);
-			se_vv_remove_reference(vm, vv);
+			se_vv_remove_reference(vm, ev->arguments[argi]);
 		}
 	}
 	array_free(&vm->events);

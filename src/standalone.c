@@ -23,7 +23,7 @@ volatile unsigned int fps_delta = (1000 / 20);
 int main(int argc, char **argv) {
 	//SDL_Init(SDL_INIT_VIDEO);
 
-#if 0
+#if 1
 	if (argc < 2) {
 		vm_printf("No script specified.\n");
 		goto _wait_and_exit;
@@ -31,7 +31,7 @@ int main(int argc, char **argv) {
 	const char *filename = argv[1];
 #else
 	//const char *filename = "../examples/bench.gcx";
-	const char *filename = "C:/Users/R/Desktop/ore/deps/scripts/wait.gsc";
+	const char *filename = "C:/Users/R/Desktop/ore/deps/scripts/q.gsc";
 #ifdef _WIN32
 	SetCurrentDirectoryA("C:/Users/R/Desktop/ore/deps/scripts/");
 #endif
