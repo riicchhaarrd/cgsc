@@ -60,7 +60,7 @@ int main(int argc, char **argv) {
 	fclose(fp);
 #endif
 	vm = vm_create();
-	vm_add_program(vm, script, script_size);
+	vm_add_program(vm, script, script_size, filename);
 	free(script);
 	vm_exec_thread(vm, "main", 0);
 

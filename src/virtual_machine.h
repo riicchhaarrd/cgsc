@@ -89,6 +89,7 @@ typedef struct
 {
 	unsigned char *data;
 	size_t size;
+	char tag[128];
 } vm_program_t;
 
 struct vm_s {

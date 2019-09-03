@@ -2703,10 +2703,13 @@ void vm_use_program(vm_t *vm, unsigned int program)
 	vm->instr = p->data;
 }
 
-int vm_add_program(vm_t *vm, unsigned char *buffer, size_t sz)
+int vm_add_program(vm_t *vm, unsigned char *buffer, size_t sz, const char *tag)
 {
 	vm_program_t prog;
-
+	if (tag)
+		snprintf(prog.tag, sizeof(prog.tag), "%s", tag);
+	else
+		strcpy(prog.tag, "none");
 	prog.data = (char*)vm_mem_alloc(vm, sz);
 	memcpy(prog.data, (void*)&buffer[0], sz);
 	prog.size = sz;

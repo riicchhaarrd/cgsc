@@ -52,7 +52,7 @@ void vm_set_user_pointer(vm_t*, void*);
 void vm_set_printf_hook(vm_t *vm, void *hook);
 
 void vm_free(vm_t *vm);
-int vm_add_program(vm_t *vm, unsigned char *buffer, size_t sz);
+int vm_add_program(vm_t *vm, unsigned char *buffer, size_t sz, const char *tag);
 vm_t *vm_create();
 void vm_error(vm_t*, int, const char *, ...);
 
