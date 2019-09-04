@@ -23,7 +23,7 @@ volatile unsigned int fps_delta = (1000 / 20);
 int main(int argc, char **argv) {
 	//SDL_Init(SDL_INIT_VIDEO);
 
-#if 1
+#ifndef _DEBUG
 	if (argc < 2) {
 		vm_printf("No script specified.\n");
 		goto _wait_and_exit;
@@ -47,10 +47,12 @@ int main(int argc, char **argv) {
 #endif
 	srand(time(0));
 	signal(SIGINT, signal_int);
+	compiler_t compiler;
+	compiler_init(&compiler, NULL);
+	compiler_add_source_file(&compiler, filename);
 
-	char *script;
-	int script_size;
-	if (parser_compile(filename, &script, &script_size)) {
+	if (compiler_execute(&compiler))
+	{
 		vm_printf("Failed compiling '%s'.\n", filename);
 		goto _wait_and_exit;
 	}
@@ -60,8 +62,8 @@ int main(int argc, char **argv) {
 	fclose(fp);
 #endif
 	vm = vm_create();
-	vm_add_program(vm, script, script_size, filename);
-	free(script);
+	vm_add_program(vm, compiler.program, compiler.program_size, filename);
+	compiler_cleanup(&compiler);
 	vm_exec_thread(vm, "main", 0);
 
 	while (vm_get_num_active_threadrunners(vm) > 0) {

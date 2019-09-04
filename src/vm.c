@@ -2236,7 +2236,11 @@ void vm_thread_reset_events(vm_t *vm, vm_thread_t *thr)
 	thr->numeventstrings = 0;
 	thr->eventstring = 0;
 	for (int ii = 0; ii < VM_MAX_EVENTS; ++ii)
+	{
+		if (thr->eventstrings[ii].inuse)
+			se_vv_remove_reference(vm, thr->eventstrings[ii].object);
 		thr->eventstrings[ii].inuse = false;
+	}
 }
 
 int vm_run_active_threads(vm_t *vm, int frametime) {
@@ -2420,6 +2424,7 @@ int vm_notify_string(vm_t *vm, varval_t *vv, const char *str, size_t numargs)
 int vm_exec_thread(vm_t *vm, const char *func_name, int numargs) {
 	if (!vm)
 		return 1;
+	int status = 0;
 
 	vm_function_info_t *fi = NULL;
 	int funcinfocount = vector_count(&vm->functioninfo);
@@ -2427,14 +2432,15 @@ int vm_exec_thread(vm_t *vm, const char *func_name, int numargs) {
 		vm_function_info_t *ffi = (vm_function_info_t*)vector_get(&vm->functioninfo, i);
 		if (!strcmp(ffi->name, func_name)) {
 			fi = ffi;
-			break;
+			vm_use_program(vm, fi->program);
+			status = vm_exec_thread_pointer(vm, fi->position, numargs);
+			if (status) break;
 		}
 	}
 
 	if (fi == NULL)
 		return E_VM_RET_FUNCTION_NOT_FOUND;
-	vm_use_program(vm, fi->program);
-	return vm_exec_thread_pointer(vm, fi->position, numargs);
+	return status;
 }
 
 typedef struct
@@ -2957,6 +2963,8 @@ void vm_free(vm_t *vm) {
 
 		//if (!thr->active)
 			//continue;
+		vm_thread_reset_events(vm, thr);
+
 		if (thr->registers[REG_SP] == 0)
 			continue;
 

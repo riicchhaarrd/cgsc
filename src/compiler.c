@@ -31,6 +31,56 @@
 #define strnicmp strncasecmp
 #endif
 
+typedef struct
+{
+	int offset;
+	int size;
+	union
+	{
+		uint32_t u32;
+		uint16_t u16;
+		uint8_t u8[4];
+	} u;
+	dynarray buffer;
+} tinystream_t;
+
+void ts_init(tinystream_t *ts)
+{
+	ts->offset = 0;
+	ts->size = 0;
+	array_init(&ts->buffer, char);
+}
+
+void ts_free(tinystream_t *ts)
+{
+	array_free(&ts->buffer);
+	ts_init(ts);
+}
+
+void ts8(tinystream_t *ts, uint8_t i)
+{
+	unsigned char c = i & 0xff;
+	array_push(&ts->buffer, &c);
+	++ts->offset;
+}
+void ts16(tinystream_t *ts, uint16_t n)
+{
+	char *p = (char*)&n;
+	array_push(&ts->buffer, p);
+	array_push(&ts->buffer, p + 1);
+	ts->offset += 2;
+}
+
+void ts32(tinystream_t *ts, uint32_t n)
+{
+	char *p = (char*)&n;
+	array_push(&ts->buffer, p);
+	array_push(&ts->buffer, p + 1);
+	array_push(&ts->buffer, p + 2);
+	array_push(&ts->buffer, p + 3);
+	ts->offset += 4;
+}
+
 #define next (pp->curpos >= pp->scriptbuffersize ? 0 : pp->scriptbuffer[pp->curpos++])
 #define next_chk(x) ( ( (pp->scriptbuffer[pp->curpos] == x) ? pp->scriptbuffer[pp->curpos++] : pp->scriptbuffer[pp->curpos] ) == x)
 
@@ -1903,16 +1953,6 @@ static int parser_statement(parser_t *pp) {
 		}
 #endif
 	}
-	else if (pp_accept(pp, TK_INT)) {
-		pp->current_segment->size = pp->program_counter - pp->current_segment->original_loc;
-		pp->current_segment = &pp->code_segments[++pp->code_segment_size];
-		pp->current_segment->original_loc = pp->program_counter;
-		pp->current_segment->assigned_loc = pp->integer;
-
-		snprintf(pp->current_segment->id, sizeof(pp->current_segment->id) - 1, "label_%d", pp->integer);
-
-		pp_expect(pp, TK_COLON);
-	}
 	else if (pp_accept(pp, TK_R_THREAD)) {
 		is_thread_call = true;
 		pp_accept(pp, TK_IDENT);
@@ -2354,103 +2394,95 @@ static int pre_buf(vm_compiler_opts_t *opts, char *buf, size_t sz, kstring_t *ou
 	return pre_err(pp, NULL);
 }
 
-typedef struct
-{
-	int offset;
-	int size;
-	union
-	{
-		uint32_t u32;
-		uint16_t u16;
-		uint8_t u8[4];
-	} u;
-	dynarray buffer;
-} tinystream_t;
-
-void ts_init(tinystream_t *ts)
-{
-	ts->offset = 0;
-	ts->size = 0;
-	array_init(&ts->buffer, char);
-}
-
-void ts_free(tinystream_t *ts)
-{
-	array_free(&ts->buffer);
-}
-
-void ts8(tinystream_t *ts, uint8_t i)
-{
-	unsigned char c = i & 0xff;
-	array_push(&ts->buffer, &c);
-	++ts->offset;
-}
-void ts16(tinystream_t *ts, uint16_t n)
-{
-	char *p = (char*)&n;
-	array_push(&ts->buffer, p);
-	array_push(&ts->buffer, p + 1);
-	ts->offset += 2;
-}
-
-void ts32(tinystream_t *ts, uint32_t n)
-{
-	char *p = (char*)&n;
-	array_push(&ts->buffer, p);
-	array_push(&ts->buffer, p + 1);
-	array_push(&ts->buffer, p + 2);
-	array_push(&ts->buffer, p + 3);
-	ts->offset += 4;
-}
-
+#if 0
 int parser_compile_string(const char *scriptbuf, char **out_program, int *out_program_size, vm_compiler_opts_t *opts)
+{
+	return 1;
+}
+
+int parser_compile(const char *filename, char **out_program, int *out_program_size)
+{
+	char *sb;
+	size_t sbs;
+	if (read_text_file(filename, &sb, (int*)&sbs)) {
+		vm_printf("failed to read file '%s'\n", filename);
+		return 1;
+	}
+	int ret = parser_compile_string(sb, out_program, out_program_size, NULL);
+	free(sb); //free mem
+	return ret;
+}
+#endif
+
+int compiler_init(compiler_t *c, vm_compiler_opts_t *opts)
 {
 	static vm_compiler_opts_t defaultopts = {
 		.read_file = read_text_file
 	};
-
+	memset(c, 0, sizeof(*c));
+	array_init(&c->sources, source_t);
 	if (!opts)
-		opts = &defaultopts;
+		c->opts = defaultopts;
+	else
+		c->opts = *opts;
+	c->program = NULL;
+	c->program_size = 0;
+	//ts_init(&c->stream);
+	return 0;
+}
 
-	*out_program = NULL;
-	*out_program_size = 0;
+void compiler_cleanup(compiler_t *c)
+{
+	//ts_free(&c->stream);
+	xfree(c->program);
+	for (unsigned int i = 0; i < c->sources.size; ++i)
+	{
+		array_get(&c->sources, source_t, src, i);
+		free(src->buffer);
+	}
+	array_free(&c->sources);
+}
 
+int compiler_add_source(compiler_t *c, const char *scriptbuf, const char *src_tag)
+{
+	source_t src;
+	src.buffer = strdup(scriptbuf);
+	src.size = strlen(src.buffer) + 1;
+	src.tag[0] = '\0';
+	if (src_tag)
+		snprintf(src.tag, sizeof(src.tag), "%s", src_tag);
+	array_push(&c->sources, &src);
+	return 0;
+}
+
+int compiler_add_source_file(compiler_t *c, const char *filename)
+{
+	char *sb;
+	size_t sbs;
+	if (read_text_file(filename, &sb, (int*)&sbs)) {
+		vm_printf("failed to read file '%s'\n", filename);
+		return 1;
+	}
+	int status = compiler_add_source(c, sb, filename);
+	free(sb); //free mem
+	return status;
+}
+
+int compiler_execute(compiler_t *c)
+{
 	int retcode = 0;
 
 	parser_t *pp = (parser_t*)xmalloc(sizeof(parser_t));
 	parser_init(pp);
-	pp->scriptbuffer = scriptbuf;
-	pp->scriptbuffersize = strlen(scriptbuf);
-
-	vector defines;
-	vector_init(&defines);
-	kstring_t processed;
-	kstring_init(&processed);
-	vector libstrings;
-	vector_init(&libstrings);
-
-	if (pre_buf(opts, pp->scriptbuffer, pp->scriptbuffersize, &processed, &defines, &libstrings)) {
-		kstring_free(&processed);
-		pre_clear_defines(&defines);
-		pre_clear_libstrings(&libstrings);
-		return 1;
+	
+	unsigned int totalsrcsize = 0;
+	for (unsigned int i = 0; i < c->sources.size; ++i)
+	{
+		array_get(&c->sources, source_t, src, i);
+		totalsrcsize += src->size;
 	}
-
-	//TODO this is leaking memory when it fails
-	//FIX libstrings
-	//* fixed guess just cleared when pre_buf fails
-
-	pre_clear_defines(&defines);
-	//xfree(pp->scriptbuffer);
-	pp->scriptbuffer = kstring_get(&processed);
-	//vm_printf("processed = %s\n", pp->scriptbuffer);
-	pp->scriptbuffersize = kstring_length(&processed);
-	//return 1;
-	//vm_printf("Compiling '%s'\n", pp->scriptbuffer);
-	//vm_printf("scriptbuffer size = %d\n",pp->scriptbuffersize);
-
-	pp->program = (char*)xmalloc(pp->scriptbuffersize * 4); //i don't think the actual program will be this size lol
-	memset(pp->program, OP_NOP, pp->scriptbuffersize);
+	pp->program = (char*)xmalloc(totalsrcsize * 4); //i don't think the actual program will be this size lol
+	memset(pp->program, OP_NOP, totalsrcsize * 4);
 
 	pp->current_segment = &pp->code_segments[0];
 	pp->current_segment->assigned_loc = 0;
@@ -2464,7 +2496,54 @@ int parser_compile_string(const char *scriptbuf, char **out_program, int *out_pr
 	program_add_opcode(pp, OP_POP); //retval
 	program_add_opcode(pp, OP_HALT);
 
-	retcode = parser_block(pp, pp->curpos, pp->scriptbuffersize);
+	vector libstrings;
+	vector_init(&libstrings);
+
+	for (unsigned int i = 0; i < c->sources.size; ++i)
+	{
+		array_get(&c->sources, source_t, src, i);
+		pp->curpos = 0;
+		pp->scriptbuffer = src->buffer;
+		pp->scriptbuffersize = src->size;
+
+		vector defines;
+		vector_init(&defines);
+		kstring_t processed;
+		kstring_init(&processed);
+
+		if (pre_buf(&c->opts, pp->scriptbuffer, pp->scriptbuffersize, &processed, &defines, &libstrings)) {
+			xfree(pp->program);
+			kstring_free(&processed);
+			pre_clear_defines(&defines);
+			pre_clear_libstrings(&libstrings);
+			vector_free(&libstrings);
+			return 1;
+		}
+
+		//TODO this is leaking memory when it fails
+		//FIX libstrings
+		//* fixed guess just cleared when pre_buf fails
+
+		pre_clear_defines(&defines);
+		//xfree(pp->scriptbuffer);
+		pp->scriptbuffer = kstring_get(&processed);
+		//vm_printf("processed = %s\n", pp->scriptbuffer);
+		pp->scriptbuffersize = kstring_length(&processed);
+		//return 1;
+		//vm_printf("Compiling '%s'\n", pp->scriptbuffer);
+		//vm_printf("scriptbuffer size = %d\n",pp->scriptbuffersize);
+		retcode = parser_block(pp, pp->curpos, pp->scriptbuffersize);
+		if (retcode)
+		{
+			xfree(pp->program);
+			kstring_free(&processed);
+			pre_clear_defines(&defines);
+			pre_clear_libstrings(&libstrings);
+			vector_free(&libstrings);
+			return 1;
+		}
+		kstring_free(&processed);
+	}
 
 	//rearrange the code structure :)
 
@@ -2484,7 +2563,9 @@ int parser_compile_string(const char *scriptbuf, char **out_program, int *out_pr
 			continue;
 		total_size += strlen(istr->string) + 1;
 	}
-
+	size_t program_size;
+	size_t *out_program_size = &program_size;
+	//*out_program_size = total_size + sizeof(int) + sizeof(int) + sizeof(int);
 	*out_program_size = total_size + sizeof(int) + sizeof(int) + sizeof(int);
 #if 1
 	tinystream_t ts;
@@ -2528,6 +2609,7 @@ int parser_compile_string(const char *scriptbuf, char **out_program, int *out_pr
 			ts32(&ts, 0); //TODO FIX THIS
 		}
 	}
+	pre_clear_libstrings(&libstrings);
 	vector_free(&libstrings);
 	*out_program_size += (ts.buffer.size + sizeof(int));
 #endif
@@ -2546,23 +2628,6 @@ int parser_compile_string(const char *scriptbuf, char **out_program, int *out_pr
 		for (pp->program_counter = seg->original_loc; pp->program_counter < seg->size + seg->original_loc; pp->program_counter++) {
 			int opcode = pp->program[pp->program_counter];
 
-			for (int k = 0; k < seg->relocation_size; k++) {
-				if (seg->relocations[k] == pp->program_counter) {
-					//change the location lol
-
-					int new_pos = 0;
-					for (int f = 0; f <= pp->code_segment_size; f++) {
-						//vm_printf("assigned_loc=%d,seg->reloc=%d\n", pp->code_segments[f].assigned_loc, seg->relocations[k]);
-
-						if (pp->code_segments[f].assigned_loc == pp->program[seg->relocations[k]]) {
-							//if not found ouch
-							opcode = new_pos;
-							//vm_printf("new_opcode=%d\n", new_pos);
-						}
-						new_pos += pp->code_segments[f].size;
-					}
-				}
-			}
 			rearranged_program[rearranged_program_pc++] = opcode;
 		}
 	}
@@ -2620,24 +2685,11 @@ int parser_compile_string(const char *scriptbuf, char **out_program, int *out_pr
 	ts_free(&ts);
 	xfree(pp->program);
 
-	kstring_free(&processed);
-
-	*out_program = rearranged_program;
+	//*out_program = rearranged_program;
+	c->program = rearranged_program;
+	c->program_size = rearranged_program_pc;
 	if (pp->error)
 		retcode = 1;
 	parser_cleanup(pp);
 	return retcode;
-}
-
-int parser_compile(const char *filename, char **out_program, int *out_program_size)
-{
-	char *sb;
-	size_t sbs;
-	if (read_text_file(filename, &sb, (int*)&sbs)) {
-		vm_printf("failed to read file '%s'\n", filename);
-		return 1;
-	}
-	int ret = parser_compile_string(sb, out_program, out_program_size, NULL);
-	free(sb); //free mem
-	return ret;
 }

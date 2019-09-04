@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 #include "../cvector.h"
+#include "../dynarray.h"
 
 //#define MEMORY_DEBUG
 
@@ -32,11 +33,33 @@ typedef struct vm_thread_s vm_thread_t;
 
 typedef struct
 {
+	unsigned char *buffer;
+	size_t size;
+	char tag[128];
+} source_t;
+
+typedef struct
+{
 	int(*read_file)(const char *filename, char **buf, int *filesize);
 } vm_compiler_opts_t;
 
+typedef struct
+{
+	dynarray sources;
+	vm_compiler_opts_t opts;
+	char *program;
+	size_t program_size;
+} compiler_t;
+
+#if 0
 int parser_compile(const char *filename, char **out_program, int *program_size);
 int parser_compile_string(const char *str, char **out_program, int *program_size, vm_compiler_opts_t* opts);
+#endif
+int compiler_init(compiler_t *c, vm_compiler_opts_t *opts);
+void compiler_cleanup(compiler_t *c);
+int compiler_add_source(compiler_t *c, const char *scriptbuf, const char *src_tag);
+int compiler_add_source_file(compiler_t *c, const char *filename);
+int compiler_execute(compiler_t *c);
 
 int vm_get_num_active_threadrunners(vm_t *vm);
 
