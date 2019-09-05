@@ -679,6 +679,31 @@ void se_register_stockfunction_set(vm_t *vm, stockfunction_t *set) {
 	vm->stockfunctionsets[vm->numstockfunctionsets++] = set;
 }
 
+void se_register_stockmethod_set(vm_t *vm, int object_type, stockmethod_t *set) {
+	vm->stockmethodobjecttypes[vm->numstockmethodsets] = object_type;
+	vm->stockmethodsets[vm->numstockmethodsets] = set;
+	++vm->numstockmethodsets;
+}
+
+static stockmethod_t *se_find_method_by_name(vm_t *vm, int object_type, const char *s) {
+	stockmethod_t *sm = NULL;
+	if (!s) return sm;
+
+	for (int fff = 0; fff < vm->numstockmethodsets; fff++) {
+		sm = vm->stockmethodsets[fff];
+		if (vm->stockmethodobjecttypes[fff] == object_type)
+		{
+			for (int i = 0; sm[i].name; i++) {
+				if (!strcmp(sm[i].name, s)) {
+					return &sm[i];
+				}
+			}
+			break;
+		}
+	}
+	return NULL;
+}
+
 static stockfunction_t *se_find_function_by_name(vm_t *vm, const char *s) {
 	stockfunction_t *sf = NULL;
 	if (!s) return sf;
@@ -1796,6 +1821,66 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 			vm_registers[REG_IP] = jmp_loc;
 		} break;
 
+		case OP_CALL_BUILTIN_METHOD: {
+			int method_name_idx = read_int(vm);
+			if (method_name_idx >= vm->istringlistsize)
+				method_name_idx = 0; //meh should be NULL or so now it calls smth random from first
+			const char *method_name = vm->istringlist[method_name_idx].string;
+			//vm_printf("func_name=%s\n", func_name);
+			int numargs = read_int(vm);
+			varval_t *self = (varval_t*)stack_get(vm,numargs);
+#if 0
+			if (self == vm->level)
+				vm_printf("self is LEVEL\n");
+			vm_printf("self type = %s\n", VV_TYPE_STRING(self));
+#endif
+			if (VV_TYPE(self) != VAR_TYPE_OBJECT)
+			{
+				vm_printf("not an object! type is %s\n", VV_TYPE_STRING(self));
+				return E_VM_RET_ERROR;
+			}
+			stockmethod_t *sm = se_find_method_by_name(vm, self->as.obj->type, method_name);
+
+			if (method_name == NULL || sm == NULL) {
+				vm_printf("built-in method '%s' does not exist! (%d)\n", method_name, method_name_idx); //methods don't have ffi mhm?
+				return E_VM_RET_ERROR;
+			}
+			vm->thrunner->numargs = numargs;
+			int prev_bp = vm_registers[REG_BP];
+			//not rlly need for pushing to stack cuz it's a internal func lol and i don't think u'll call another func from there in the script again
+			//Would be terrible
+
+#if 0
+			for (int i = 0; i < numargs; i++) {
+				int val = vm->stack[vm->registers[REG_SP] - i];
+				vm_printf("loc=%d, val=%d\n", vm->registers[REG_SP] - i, val);
+			}
+#endif
+			vm_registers[REG_BP] = vm_registers[REG_SP] - numargs + 1;
+			//vm_printf("REG_BP=%d\n", vm_registers[REG_BP]);
+
+			//do the calling here
+			varval_t *retval = NULL;
+			
+			if (sm->call(vm, self) != 0) {
+				retval = (varval_t*)stack_pop(vm);
+			}
+			else {
+				retval = NULL;
+			}
+
+			for (int i = numargs; i--;) {
+				varval_t *vv = (varval_t*)stack_pop(vm); //pop all local vars?
+				//--vv->refs;
+				se_vv_free(vm, vv);
+			}
+			se_vv_free(vm, self);
+
+			vm_registers[REG_BP] = prev_bp;
+
+			stack_push_vv(vm, retval);
+		} break;
+
 		case OP_CALL_BUILTIN: {
 
 			int func_name_idx = read_int(vm);
@@ -2129,6 +2214,40 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 			vm->thrunner->wait += b;
 
 			return E_VM_RET_WAIT;
+		} break;
+
+		case OP_CALL_METHOD: {
+#if 0
+			int jmp_loc = read_int(vm);
+			int numargs = read_int(vm);
+
+			varval_t *self = (varval_t*)stack_get(vm, numargs);
+			for (int i = numargs; i--;) {
+				varval_t *vv = (varval_t*)stack_pop(vm);
+				if (VV_USE_REF(vv))
+					vv->refs++;
+				vm->tmpstack[i] = (intptr_t)vv;
+			}
+
+			int curpos = vm_registers[REG_IP];
+			stack_push(vm, curpos);
+			//vm_printf("call jmp to %d, returning to %d\n", jmp_loc, curpos);
+
+			stack_push(vm, vm_registers[REG_BP]); //save the previous stack frame bp
+			vm_registers[REG_BP] = vm_registers[REG_SP] + 1;
+
+			memset(&vm_stack[vm_registers[REG_BP]], 0, sizeof(intptr_t) * MAX_LOCAL_VARS);
+
+			for (int i = numargs; i--;)
+				stack_push(vm, vm->tmpstack[numargs - i - 1]);
+
+			//alloc minimum of MAX_LOCAL_VARS values on stack for locals?
+			vm_registers[REG_SP] += MAX_LOCAL_VARS - numargs;
+			stack_push(vm, numargs);
+
+			vm_registers[REG_IP] = jmp_loc;
+#endif
+			/* TODO IMPLEMENT */
 		} break;
 
 		case OP_CALL: {
@@ -2782,6 +2901,9 @@ vm_t *vm_create() {
 
 	extern stockfunction_t std_scriptfunctions[];
 	se_register_stockfunction_set(vm, std_scriptfunctions);
+
+	extern stockmethod_t std_scriptmethods[];
+	se_register_stockmethod_set(vm, VT_OBJECT_LEVEL, std_scriptmethods);
 
 	vm->threadrunners = (vm_thread_t*)vm_mem_alloc(vm, sizeof(vm_thread_t) * MAX_SCRIPT_THREADS);
 	memset(vm->threadrunners, 0, sizeof(vm_thread_t)*MAX_SCRIPT_THREADS);

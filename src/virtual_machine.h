@@ -140,7 +140,10 @@ struct vm_s {
 	int istringlistsize;
 
 	stockfunction_t *stockfunctionsets[16];
+	stockmethod_t *stockmethodsets[16];
+	int stockmethodobjecttypes[16];
 	int numstockfunctionsets;
+	int numstockmethodsets;
 
 	void *m_userpointer;
 	int (*m_printf_hook)(const char *, ...);

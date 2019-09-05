@@ -1027,6 +1027,17 @@ int sf_eval(vm_t *vm)
 }
 #endif
 
+int sm_test(vm_t *vm, varval_t *self)
+{
+	se_addint(vm, 123);
+	return 1;
+}
+
+stockmethod_t std_scriptmethods[] = {
+	{"testabc", sm_test},
+	{NULL,0}
+};
+
 stockfunction_t std_scriptfunctions[] = {
 #ifdef _WIN32
 	{"set_pixel", sf_setpixel},

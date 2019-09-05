@@ -755,6 +755,39 @@ cstruct_t *parser_get_struct(parser_t *pp, const char *name, int *index)
 	return NULL;
 }
 
+int parser_process_variable_member_fields(parser_t *pp, const char *str)
+{
+	while (1)
+	{
+		if (pp_accept(pp, TK_DOT)) {
+			do {
+				if (!pp_expect(pp, TK_IDENT))
+					return 1;
+				if (stricmp(pp->string, "size")) {
+					scr_istring_t *istr = NULL;
+					int index = parser_find_indexed_string(pp, pp->string, &istr);
+
+					if (istr == NULL)
+						index = parser_create_indexed_string(pp, pp->string);
+					program_add_opcode(pp, OP_LOAD_FIELD);
+					program_add_short(pp, index);
+				}
+				else
+					program_add_opcode(pp, OP_GET_LENGTH);
+			} while (pp_accept(pp, TK_DOT));
+		}
+		else if (pp_accept(pp, TK_LBRACK)) {
+			if (parser_expression(pp))
+				return 1;
+			program_add_opcode(pp, OP_LOAD_ARRAY_INDEX);
+			pp_expect(pp, TK_RBRACK);
+		}
+		else
+			break;
+	}
+	return 0;
+}
+
 /* TODO rewrite this stuff into e.g factor push stuff and then e.g TK_ASSIGN push the STORE_ stuff with states or so */
 
 static int parser_factor(parser_t *pp) {
@@ -869,50 +902,69 @@ static int parser_factor(parser_t *pp) {
 		char id[128] = { 0 };
 		snprintf(id, sizeof(id) - 1, "%s", pp->string);
 
-		if (pp_accept(pp, TK_LPAREN)) {
+		bool is_method = false;
 
-			int numargs = 0;
+		if (pp_accept(pp, TK_IDENT))
+		{
+			//e.g self method(); //method call
 
-			if (pp_accept(pp, TK_RPAREN))
-				goto no_args_lol;
-			do {
-				++numargs;
-				if (parser_expression(pp)) //auto pushes
-					return 1;
-			} while (pp_accept(pp, TK_COMMA));
+			if (parser_variable(pp, id, true, false, NULL, OP_LOAD))
+				return 1;
 
-			pp_expect(pp, TK_RPAREN);
+			if (parser_process_variable_member_fields(pp, pp->string))
+				return 1;
+			//copy the method name
+			snprintf(id, sizeof(id) - 1, "%s", pp->string);
 
-		no_args_lol:
-
-			//vm_printf("function call with RETURN !!!! %s()\n", id);
+			pp_expect(pp, TK_LPAREN); //has to be a function call
+			is_method = true;
+			goto _func_call;
+		} else if (pp_accept(pp, TK_LPAREN)) {
+		_func_call:
 			{
-				bool found = false;
-				for (int i = 0; i <= pp->code_segment_size; i++) {
-					code_segment_t *seg = &pp->code_segments[i];
-					if (!strcmp(seg->id, id)) {
-						found = true;
-						program_add_opcode(pp, OP_CALL);
-						pp->current_segment->relocations[pp->current_segment->relocation_size++] = pp->program_counter;
-						program_add_int(pp, seg->original_loc);
-						program_add_int(pp, numargs);
-						break;
+				int numargs = 0;
+
+				if (pp_accept(pp, TK_RPAREN))
+					goto no_args_lol;
+				do {
+					++numargs;
+					if (parser_expression(pp)) //auto pushes
+						return 1;
+				} while (pp_accept(pp, TK_COMMA));
+
+				pp_expect(pp, TK_RPAREN);
+
+			no_args_lol:
+
+				//vm_printf("function call with RETURN !!!! %s()\n", id);
+				{
+					bool found = false;
+					for (int i = 0; i <= pp->code_segment_size; i++) {
+						code_segment_t *seg = &pp->code_segments[i];
+						if (!strcmp(seg->id, id)) {
+							found = true;
+							program_add_opcode(pp, is_method ? OP_CALL_METHOD : OP_CALL);
+							pp->current_segment->relocations[pp->current_segment->relocation_size++] = pp->program_counter;
+							program_add_int(pp, seg->original_loc);
+							program_add_int(pp, numargs);
+							break;
+						}
 					}
-				}
 
-				if (!found) {
+					if (!found) {
 
-					//just add it to the 'builtin' funcs and maybe that works? :D
-					//vm_printf("function '%s' does not exist!\n", id);
-					program_add_opcode(pp, OP_CALL_BUILTIN);
+						//just add it to the 'builtin' funcs and maybe that works? :D
+						//vm_printf("function '%s' does not exist!\n", id);
+						program_add_opcode(pp, is_method ? OP_CALL_BUILTIN_METHOD : OP_CALL_BUILTIN);
 
-					scr_istring_t *istr = NULL;
-					int index = parser_find_indexed_string(pp, id, &istr);
+						scr_istring_t *istr = NULL;
+						int index = parser_find_indexed_string(pp, id, &istr);
 
-					if (istr == NULL)
-						index = parser_create_indexed_string(pp, id);
-					program_add_int(pp, index); //the index of string
-					program_add_int(pp, numargs);
+						if (istr == NULL)
+							index = parser_create_indexed_string(pp, id);
+						program_add_int(pp, index); //the index of string
+						program_add_int(pp, numargs);
+					}
 				}
 			}
 		}
@@ -921,33 +973,8 @@ static int parser_factor(parser_t *pp) {
 			if (parser_variable(pp, pp->string, true, false, NULL, OP_LOAD))
 				return 1;
 
-			while (1) {
-				if (pp_accept(pp, TK_DOT)) {
-					do {
-						if (!pp_expect(pp, TK_IDENT))
-							return 1;
-						if (stricmp(pp->string, "size")) {
-							scr_istring_t *istr = NULL;
-							int index = parser_find_indexed_string(pp, pp->string, &istr);
-
-							if (istr == NULL)
-								index = parser_create_indexed_string(pp, pp->string);
-							program_add_opcode(pp, OP_LOAD_FIELD);
-							program_add_short(pp, index);
-						}
-						else
-							program_add_opcode(pp, OP_GET_LENGTH);
-					} while (pp_accept(pp, TK_DOT));
-				}
-				else if (pp_accept(pp, TK_LBRACK)) {
-					if (parser_expression(pp))
-						return 1;
-					program_add_opcode(pp, OP_LOAD_ARRAY_INDEX);
-					pp_expect(pp, TK_RBRACK);
-				}
-				else
-					break;
-			}
+			if (parser_process_variable_member_fields(pp, pp->string))
+				return 1;
 		}
 	}
 	else if (pp_accept(pp, TK_LPAREN)) {
@@ -1744,10 +1771,21 @@ static int parser_statement(parser_t *pp) {
 
 		vector jumps;
 		vector_init(&jumps);
-
+		bool has_added_ops = false;
 		do {
 			int from_jmp_relative = pp->program_counter;
-			
+			unsigned int cur = pp->curpos;
+			if (tk == TK_R_FOR && pp_accept(pp, TK_SEMICOLON) && !has_added_ops)
+			{
+				program_add_opcode(pp, OP_PUSH);
+				program_add_int(pp, 0);
+				program_add_opcode(pp, OP_PUSH);
+				program_add_int(pp, 0);
+				program_add_opcode(pp, OP_EQ);
+				pp->curpos = cur;
+				break;
+			}
+			has_added_ops = true;
 			if (pp_accept(pp, TK_NOT)) {
 				if (parser_expression(pp))
 					return 1;
@@ -1807,16 +1845,25 @@ static int parser_statement(parser_t *pp) {
 			);
 
 		int tmp_at_this_loc = 0;
+		bool got_rparen = false;
 		if (tk == TK_R_FOR) {
-			pp->execute = false;
 			pp_accept(pp, TK_SEMICOLON);
 			tmp_at_this_loc = pp->curpos;
-			if (parser_statement(pp))
-				return 1;
-			pp->execute = true;
+			if (!pp_accept(pp, TK_RPAREN))
+			{
+				pp->execute = false;
+				if (parser_statement(pp))
+					return 1;
+				pp->execute = true;
+			}
+			else
+			{
+				tmp_at_this_loc = pp->curpos;
+				got_rparen = true;
+			}
 		}
-
-		pp_expect(pp, TK_RPAREN);
+		if(!got_rparen)
+			pp_expect(pp, TK_RPAREN);
 
 		int codeblockpos = pp->program_counter;
 		if (pp_accept(pp, TK_LBRACE)) {

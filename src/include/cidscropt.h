@@ -84,6 +84,11 @@ typedef struct {
 	int(*call)(vm_t*);
 } stockfunction_t;
 
+typedef struct {
+	const char *name;
+	int(*call)(vm_t*,void*);
+} stockmethod_t;
+
 varval_t *se_argv(vm_t*, int);
 int se_argc(vm_t*);
 #define se_getnumparams(vm) se_argc(vm)
@@ -251,6 +256,7 @@ void se_addint(vm_t*, int);
 #define se_addbool(a,b) se_addint(a,((b==true) ? 1 : 0))
 void se_addfloat(vm_t*, float);
 void se_register_stockfunction_set(vm_t*, stockfunction_t*);
+void se_register_stockmethod_set(vm_t *vm, int object_type, stockmethod_t *set);
 
 int se_istring_from_string(vm_t *vm, const char *str);
 
