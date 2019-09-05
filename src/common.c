@@ -5,6 +5,9 @@
 #include <dirent.h>
 #include <errno.h>
 #endif
+#ifdef __EMSCRIPTEN__
+#include <SDL.h>
+#endif
 
 int(*g_printf_hook)(const char *, ...) = (int(*)(const char*, ...))printf;
 
@@ -122,6 +125,9 @@ int sys_get_files_from_path(const char *path, file_info_t **files, size_t *outnu
 #endif
 
 void sys_sleep(int msec) {
+#ifdef __EMSCRIPTEN__
+	SDL_Delay(msec);
+#else
 #ifdef WIN32
 	Sleep(msec);
 #elif _POSIX_C_SOURCE >= 199309L
@@ -131,5 +137,6 @@ void sys_sleep(int msec) {
 	nanosleep(&ts, NULL);
 #else
 	usleep(msec * 1000);
+#endif
 #endif
 }

@@ -14,11 +14,6 @@
 #define VM_STACK_SIZE (65000)
 
 typedef enum {
-	E_VM_ERR_NONE,
-	E_VM_ERR_DIVIDE_BY_ZERO,
-} e_vm_error_codes;
-
-typedef enum {
 	REG_A,
 	REG_B,
 	REG_C,

@@ -17,9 +17,10 @@ typedef enum {
 	E_VM_RET_ERROR,
 } e_vm_return_codes;
 
-typedef enum
-{
-	E_VM_ERROR /* todo add more specific error codes */
+typedef enum {
+	E_VM_ERR_NONE,
+	E_VM_ERR_ERROR,
+	E_VM_ERR_DIVIDE_BY_ZERO,
 } e_vm_error_codes;
 
 typedef struct
