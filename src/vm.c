@@ -2664,6 +2664,7 @@ static int vm_read_functions(vm_t *vm, unsigned int program) {
 			return 1;
 		}
 		array_init(&lib.functions, vm_ffi_lib_func_t);
+		int vm_library_read_functions(vm_t *vm, vm_ffi_lib_t *l);
 		if (vm_library_read_functions(vm, &lib))
 		{
 			goto fail_lib;

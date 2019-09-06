@@ -1,5 +1,6 @@
 #pragma once
 #include <malloc.h>
+#include <stdarg.h>
 
 typedef struct {
 	int capacity;

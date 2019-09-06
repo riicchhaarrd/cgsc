@@ -20,6 +20,38 @@ void signal_int(int parm) {
 //#define FPS_DELTA (1000 / 20)
 volatile unsigned int fps_delta = (1000 / 20);
 
+#ifdef __EMSCRIPTEN__
+void run_script(const char *script)
+{
+	srand(time(0));
+	signal(SIGINT, signal_int);
+	compiler_t compiler;
+	compiler_init(&compiler, NULL);
+	compiler_add_source(&compiler, script, "script");
+
+	if (compiler_execute(&compiler))
+	{
+		vm_printf("Failed compiling script.");
+		return;
+	}
+#if 0
+	FILE *fp = fopen("program.bin", "wb");
+	fwrite(script, 1, script_size, fp);
+	fclose(fp);
+#endif
+	vm = vm_create();
+	vm_add_program(vm, compiler.program, compiler.program_size, "script");
+	compiler_cleanup(&compiler);
+	vm_exec_thread(vm, "main", 0);
+
+	while (vm_get_num_active_threadrunners(vm) > 0) {
+		vm_run_active_threads(vm, fps_delta);
+		sys_sleep(fps_delta);
+	}
+	vm_free(vm);
+}
+#endif
+
 int main(int argc, char **argv) {
 	//SDL_Init(SDL_INIT_VIDEO);
 

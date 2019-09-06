@@ -45,6 +45,6 @@ void push(u8 **p, x86_register_t reg);
 void pop(u8 **p, x86_register_t reg);
 void ret(u8 **p, u16 n);
 void jmp(u8 **p, u32 n);
-
+void mov(u8 **p, x86_register_t dest, x86_register_t src);
 void add_imm(u8 **p, x86_register_t reg, u32 imm);
 void sub_imm(u8 **p, x86_register_t reg, u32 imm);

@@ -6,10 +6,14 @@
 #include "cvector.h"
 #include "dynarray.h"
 
+#ifdef __EMSCRIPTEN__
+#define VM_INLINE
+#else
 #ifdef _WIN32
 #define VM_INLINE __forceinline
 #else
 #define VM_INLINE inline
+#endif
 #endif
 #define VM_STACK_SIZE (65000)
 
