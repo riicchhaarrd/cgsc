@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include "common.h"
 #include "virtual_machine.h"
 
 static int vars_created = 0;
@@ -479,9 +480,11 @@ vt_istring_t *se_istring_create(vm_t *vm, const char *str) {
 		if (!istr->string) {
 			size_t str_len = strlen(str);
 			istr->index = i;
+			istr->hash = hash_string(str);
 			istr->string = (char*)vm_mem_alloc(vm, str_len + 1);
 			strncpy(istr->string, str, str_len);
 			istr->string[str_len] = '\0';
+			//vm_printf("[vm] created indexed string (%s) at %d\n", str, istr->index);
 			return istr;
 		}
 	}
@@ -490,11 +493,12 @@ vt_istring_t *se_istring_create(vm_t *vm, const char *str) {
 
 vt_istring_t *se_istring_find(vm_t *vm, const char *str) {
 	vt_istring_t *istr = NULL;
+	unsigned long hash = hash_string(str);
 	for (int i = 0; i < vm->istringlistsize; i++) {
 		istr = &vm->istringlist[i];
 		if (!istr->string)
 			continue;
-		if (!strcmp(istr->string, str)) {
+		if (hash == istr->hash && !strcmp(istr->string, str)) {
 			return istr;
 		}
 	}

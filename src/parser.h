@@ -17,6 +17,7 @@ typedef struct {
 typedef struct {
 	int inuse;
 	char *string;
+	unsigned long hash;
 } scr_istring_t;
 
 typedef struct {

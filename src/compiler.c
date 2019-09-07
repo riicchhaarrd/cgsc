@@ -9,6 +9,7 @@
 
 #include "tokens.h"
 #include "variable.h"
+#include "common.h"
 
 #define ENUM_BEGIN(typ) typedef enum {
 #define ENUM(nam) nam
@@ -99,7 +100,7 @@ static int parser_append_to_parse_string(parser_t *pp, int c) {
 	return 1;
 }
 
-bool isHexChar(int ch, int *value) {
+bool is_hex_char(int ch, int *value) {
 	*value = 0;
 	if (ch >= 'a' && ch <= 'f') {
 		*value = 15 - ('f' - ch);
@@ -137,10 +138,10 @@ static int parser_read_string(parser_t *pp) {
 			case 'x': {
 				int nibble1, nibble2;
 				int first = next;
-				if (!isHexChar(first, &nibble1))
+				if (!is_hex_char(first, &nibble1))
 					goto break_out;
 				int second = next;
-				if (!isHexChar(second, &nibble2)) goto break_out;
+				if (!is_hex_char(second, &nibble2)) goto break_out;
 				int value = ((nibble1 << 4) | nibble2) & 255;
 				ch = value;
 			} break;
@@ -551,11 +552,12 @@ static int parser_locate_token(parser_t *pp, int token, int *at_position, int bl
 static int parser_find_indexed_string(parser_t *pp, const char *str, scr_istring_t **out) {
 	scr_istring_t *istr = NULL;
 	*out = istr;
+	unsigned long hash = hash_string(str);
 	for (int i = 0; i < MAX_ISTRINGS; i++) {
 		istr = &pp->istrings[i];
 		if (!istr->inuse)
 			continue;
-		if (!strcmp(istr->string, str)) {
+		if (hash == istr->hash && !strcmp(istr->string, str)) {
 			*out = istr;
 			return i;
 		}
@@ -580,8 +582,10 @@ static int parser_create_indexed_string(parser_t *pp, const char *str) {
 		return 0;
 	}
 	++pp->numistrings;
+	pp->istrings[i].hash = hash_string(new_str);
 	pp->istrings[i].inuse = true;
 	pp->istrings[i].string = new_str;
+	//printf("created indexed string (%s) at %d\n", new_str, i);
 	return i;
 }
 
@@ -2692,9 +2696,9 @@ int compiler_execute(compiler_t *c)
 
 		*(int*)(rearranged_program + rearranged_program_pc) = seg->new_location;
 		rearranged_program_pc += sizeof(int);
-		strncpy(rearranged_program + rearranged_program_pc, seg->id, strlen(seg->id));
-		rearranged_program_pc += strlen(seg->id);
-		rearranged_program[rearranged_program_pc++] = 0;
+		memcpy(rearranged_program + rearranged_program_pc, seg->id, strlen(seg->id) + 1);
+		rearranged_program_pc += strlen(seg->id) + 1;
+		//rearranged_program[rearranged_program_pc++] = 0;
 	}
 #endif
 	int total_num_ref_funcs = 0;
@@ -2715,9 +2719,11 @@ int compiler_execute(compiler_t *c)
 		istr = &pp->istrings[i];
 		if (!istr->inuse)
 			continue;
-		strncpy(rearranged_program + rearranged_program_pc, istr->string, strlen(istr->string));
-		rearranged_program_pc += strlen(istr->string);
-		rearranged_program[rearranged_program_pc++] = 0;
+		memcpy(rearranged_program + rearranged_program_pc, istr->string, strlen(istr->string) + 1);
+
+		//strncpy(rearranged_program + rearranged_program_pc, istr->string, strlen(istr->string));
+		rearranged_program_pc += strlen(istr->string) + 1;
+		//rearranged_program[rearranged_program_pc++] = 0;
 	}
 
 	//write amount of functions

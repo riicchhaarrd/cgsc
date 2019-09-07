@@ -130,6 +130,7 @@ typedef enum {
 typedef struct {
 	int index;
 	char *string;
+	unsigned long hash;
 } vt_istring_t;
 
 typedef struct {

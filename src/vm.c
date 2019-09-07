@@ -2767,10 +2767,13 @@ static int vm_read_functions(vm_t *vm, unsigned int program) {
 	for (int i = 0; i < num_calls_to_builtin; i++) {
 
 		id_len = 0;
+		id[id_len] = '\0';
 		int ch = prog->data[at];
 		while (at < prog->size && ch) {
 			id[id_len++] = ch = prog->data[at++];
 		}
+		if (id_len == 0)
+			++at;//if it's a empty string, still eat up the \0 character
 		id[id_len++] = 0;
 		//vm_printf("ID=%s\n", id);
 		istr = se_istring_find(vm, id);

@@ -102,7 +102,7 @@ int main(int argc, char **argv) {
 	const char *filename = argv[1];
 #else
 	//const char *filename = "../examples/bench.gcx";
-	const char *filename = "C:/Users/R/Desktop/ore/deps/scripts/wait.gsc";
+	const char *filename = "C:/Users/R/Desktop/ore/deps/scripts/unit.gsc";
 #ifdef _WIN32
 	SetCurrentDirectoryA("C:/Users/R/Desktop/ore/deps/scripts/");
 #endif
