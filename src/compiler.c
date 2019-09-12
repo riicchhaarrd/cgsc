@@ -2186,6 +2186,7 @@ void pre_clear_libstrings(vector *libs)
 		dynstring s = (dynstring)vector_get(libs, i);
 		dynfree(&s);
 	}
+	vector_free(libs);
 }
 
 void pre_clear_defines(vector *def)
@@ -2567,7 +2568,6 @@ int compiler_execute(compiler_t *c)
 			kstring_free(&processed);
 			pre_clear_defines(&defines);
 			pre_clear_libstrings(&libstrings);
-			vector_free(&libstrings);
 			return 1;
 		}
 
@@ -2590,7 +2590,6 @@ int compiler_execute(compiler_t *c)
 			kstring_free(&processed);
 			pre_clear_defines(&defines);
 			pre_clear_libstrings(&libstrings);
-			vector_free(&libstrings);
 			return 1;
 		}
 		kstring_free(&processed);
@@ -2632,8 +2631,9 @@ int compiler_execute(compiler_t *c)
 			ts8(&ts, s[k]);
 		}
 		ts8(&ts, 0);
-		dynfree(&s);
+		//dynfree(&s);
 	}
+	pre_clear_libstrings(&libstrings);
 	ts32(&ts, pp->structs.size);
 	for (int i = 0; i < pp->structs.size; i++)
 	{
@@ -2660,8 +2660,6 @@ int compiler_execute(compiler_t *c)
 			ts32(&ts, 0); //TODO FIX THIS
 		}
 	}
-	pre_clear_libstrings(&libstrings);
-	vector_free(&libstrings);
 	*out_program_size += (ts.buffer.size + sizeof(int));
 #endif
 	rearranged_program = (char*)xmalloc(*out_program_size);

@@ -600,9 +600,9 @@ void se_set_object_field(vm_t *vm, const char *key) {
 		istr = se_istring_create(vm, key);
 	se_vv_set_field(vm, obj, istr->index, val);
 	se_vv_free(vm, val); //free the value as the set_field creates a copy of the value
-	if (!se_vv_free(vm, obj)) //should free this aswell right if it's a temp obj)
-		stack_push(vm, 0);
-	else
+	//if (!se_vv_free(vm, obj)) //should free this aswell right if it's a temp obj)
+		//stack_push(vm, 0);
+	//else
 		stack_push_vv(vm, obj); //put it back :D
 }
 #endif
