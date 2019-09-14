@@ -94,6 +94,13 @@ int main(int argc, char **argv) {
 #ifdef __EMSCRIPTEN__
 	return 0;
 #endif
+
+	if (argc > 1 && !strcmp(argv[1], "-v"))
+	{
+		printf("cidscropt standalone version (https://github.com/riicchhaarrd/cidscropt)\n");
+		return 0;
+	}
+
 #ifndef _DEBUG
 	if (argc < 2) {
 		vm_printf("No script specified.\n");
