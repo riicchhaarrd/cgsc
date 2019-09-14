@@ -15,5 +15,5 @@ typedef struct {
 int sys_get_files_from_path(const char *path, file_info_t **files, size_t *outnumfiles);
 void sys_sleep(int);
 
-int read_text_file(const char *filename, void **buf, int *filesize);
+int read_text_file(const char *filename, char **buf, int *filesize);
 unsigned long hash_string(const char *);
