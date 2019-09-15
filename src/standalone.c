@@ -8,6 +8,8 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
+#include "include_ccall.h"
+
 /* used this to test C SDL ffi */
 //#include <SDL.h>
 //#undef main
@@ -43,7 +45,7 @@ void one_iter()
 
 #ifdef __EMSCRIPTEN__
 
-void script_command(const char *cmd)
+CCALL void script_command(const char *cmd)
 {
 	emscripten_cancel_main_loop();
 	if (gvm)
@@ -53,7 +55,7 @@ void script_command(const char *cmd)
 	}
 }
 
-void run_script(const char *script)
+CCALL void run_script(const char *script)
 {
 	srand(time(0));
 	signal(SIGINT, signal_int);

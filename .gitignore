@@ -21,3 +21,4 @@
 bin/cidscropt
 todo.txt
 *.res
+obj/*.bc
