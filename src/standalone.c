@@ -101,7 +101,7 @@ int main(int argc, char **argv) {
 		return 0;
 	}
 
-#if 0
+#if 1
 	if (argc < 2) {
 		vm_printf("No script specified.\n");
 		goto _wait_and_exit;

@@ -1022,7 +1022,7 @@ static VM_INLINE int vm_jit(vm_t *vm, int instr, unsigned char *asm)
 //we're using a default primitive types use copy instead of reference so any time that stack_pop is used, free the value (try to when the refs are <= 0)
 //use se_vv_free(vm, vv);
 
-VM_INLINE int vm_execute(vm_t *vm, int instr) {
+int vm_execute(vm_t *vm, int instr) {
 #if 0
 	if (instr < OP_END_OF_LIST) {
 		vm_printf("%s\n", e_opcodes_strings[instr]);

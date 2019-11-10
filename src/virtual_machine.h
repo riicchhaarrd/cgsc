@@ -174,7 +174,7 @@ VM_INLINE void stack_push(vm_t *vm, intptr_t x) {
 }
 
 varval_t *vv_cast(vm_t *vm, varval_t *vv, int desired_type);
-void stack_push_vv(vm_t *vm, varval_t *x) {
+static void stack_push_vv(vm_t *vm, varval_t *x) {
 	if (vm->cast_stack_ptr > 0)
 	{
 		int cast_type = vm->cast_stack[--vm->cast_stack_ptr];
