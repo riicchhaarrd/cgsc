@@ -174,16 +174,19 @@ VM_INLINE void stack_push(vm_t *vm, intptr_t x) {
 }
 
 varval_t *vv_cast(vm_t *vm, varval_t *vv, int desired_type);
-static void stack_push_vv(vm_t *vm, varval_t *x) {
-	if (vm->cast_stack_ptr > 0)
+VM_INLINE void stack_push_vv(vm_t *vm, varval_t *x) {
+	if (vm->cast_stack_ptr <= 0)
+		stack_push(vm, (intptr_t)x);
+	else
 	{
-		int cast_type = vm->cast_stack[--vm->cast_stack_ptr];
-		stack_push_vv(vm, vv_cast(vm, x, cast_type));
-		//vm_printf("desired cast type = %s, current = %s\n", e_var_types_strings[cast_type], e_var_types_strings[VV_TYPE(vv)]);
-		se_vv_free(vm, x);
-		return;
+		while (vm->cast_stack_ptr > 0)
+		{
+			int cast_type = vm->cast_stack[--vm->cast_stack_ptr];
+			stack_push(vm, vv_cast(vm, x, cast_type));// stack_push_vv(vm, vv_cast(vm, x, cast_type));
+			//vm_printf("desired cast type = %s, current = %s\n", e_var_types_strings[cast_type], e_var_types_strings[VV_TYPE(vv)]);
+			se_vv_free(vm, x);
+		}
 	}
-	stack_push(vm, (intptr_t)x);
 }
 
 VM_INLINE intptr_t stack_get(vm_t *vm, int at) {
