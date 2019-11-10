@@ -3,7 +3,7 @@
 #include "common.h"
 #include "virtual_machine.h"
 
-static int vars_created = 0;
+//static int vars_created = 0;
 
 vt_object_t *se_obj_create(vm_t *vm) {
 	vt_object_t *obj = (vt_object_t*)vm_mem_alloc(vm, sizeof(vt_object_t));
@@ -20,43 +20,47 @@ vt_object_t *se_obj_create(vm_t *vm) {
 	vector_init(&obj->fields);
 	return obj;
 }
-
-static VM_INLINE bool varcache_has_available(vm_t *vm)
+#if 0
+VM_INLINE bool varcache_has_available(vm_t *vm)
 {
 	return (vm->varcachesize < MAX_CACHED_VARS);
 }
+#endif
 
-//bit messy ye oh well
-static VM_INLINE varval_t *vv_alloc_mem(vm_t *vm)
+VM_INLINE varval_t *vv_cache_get_slot(vm_t *vm)
 {
-	if (!varcache_has_available(vm))
-	{
-		varval_t *vv = (varval_t*)vm_mem_alloc(vm, sizeof(varval_t));
-		memset(vv, 0, sizeof(varval_t));
-		return vv;
-	}
-	for (int i = MAX_CACHED_VARS; i--;)
-	{
-		varval_t *vv = &vm->varcache[i];
-		if(vv->flags & VF_CACHED)
-			continue;
-		memset(vv, 0, sizeof(varval_t));
-		vv->flags |= VF_CACHED;
-		++vm->varcachesize;
-		return vv;
-	}
-	return NULL;
+	return (varval_t*)stk_pop(&vm->varcacheavail);
 }
 
-static VM_INLINE void vv_free_mem(vm_t *vm, varval_t *vv)
+//bit messy ye oh well
+VM_INLINE varval_t *vv_alloc_mem(vm_t *vm)
 {
-	if (vv->flags & VF_CACHED)
+	varval_t *slot = vv_cache_get_slot(vm);
+	if (!slot)
 	{
-		vv->flags &= ~VF_CACHED;
-		--vm->varcachesize;
+		//scale up the cache
+		//all vars of max are in use
+		varval_t *vv = (varval_t*)vm_mem_alloc(vm, sizeof(varval_t));
+		memset(vv, 0, sizeof(varval_t));
+		//vector_add(&vm->varcachearray, vv);
+		++vm->varcachemax;
+		slot = vv;
+	}
+	memset(slot, 0, sizeof(varval_t));
+	slot->flags |= VF_INUSE;
+	return slot;
+}
+
+VM_INLINE void vv_free_mem(vm_t *vm, varval_t *vv)
+{
+	stk_push(&vm->varcacheavail, vv);
+	if (vv->flags & VF_INUSE)
+	{
+		vv->flags &= ~VF_INUSE;
+		//--vm->varcachesize;
 		return;
 	}
-	vm_mem_free(vm, vv);
+	//vm_mem_free(vm, vv);
 }
 
 //TODO add to global GC so it can delete/clear them up?
@@ -65,10 +69,10 @@ varval_t *se_vv_create_r(vm_t *vm, e_var_types_t type, const char *_file, int _l
 #else
 varval_t *se_vv_create(vm_t *vm, e_var_types_t type) {
 #endif
-	++vars_created;
+	//++vars_created;
 
 	varval_t *vv = vv_alloc_mem(vm);
-	memset(&vv->as, 0, sizeof(vv->as));
+	//memset(&vv->as, 0, sizeof(vv->as));
 
 #ifdef MEMORY_DEBUG
 	snprintf(vv->debugstring, sizeof(vv->debugstring), "%s [%d]", _file, _line);
@@ -79,7 +83,7 @@ varval_t *se_vv_create(vm_t *vm, e_var_types_t type) {
 	if (VV_USE_REF(vv))
 		vv->as.obj = se_obj_create(vm);
 	
-	vector_add(&vm->vars, vv);
+	//vector_add(&vm->vars, vv);
 
 	//vm_printf("adding vv(%02X)\n", vv);
 
@@ -429,7 +433,7 @@ int se_vv_free_r(vm_t *vm, varval_t *vv, const char *_file, int _line)
 	if (!se_vv_is_freeable(vm, vv))
 		return 1;
 
-	--vars_created;
+	//--vars_created;
 #if 0
 	if(vars_created == 0)
 		vm_printf("vars freed=%d\n", vars_created);
@@ -441,6 +445,7 @@ int se_vv_free_r(vm_t *vm, varval_t *vv, const char *_file, int _line)
 		else if (VV_USE_REF(vv))
 			se_vv_object_free(vm, vv);
 	}
+#if 0
 	int loc = vector_locate(&vm->vars, vv);
 
 	if (loc != -1) {
@@ -457,6 +462,7 @@ int se_vv_free_r(vm_t *vm, varval_t *vv, const char *_file, int _line)
 	} else {
 		//vm_printf("vv (%02X) not found in vars!\n", vv);
 	}
+#endif
 
 #ifdef MEMORY_DEBUG
 	vm_printf("VAR FREE\n");

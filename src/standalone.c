@@ -101,7 +101,7 @@ int main(int argc, char **argv) {
 		return 0;
 	}
 
-#ifndef _DEBUG
+#if 0
 	if (argc < 2) {
 		vm_printf("No script specified.\n");
 		goto _wait_and_exit;
@@ -109,9 +109,9 @@ int main(int argc, char **argv) {
 	const char *filename = argv[1];
 #else
 	//const char *filename = "../examples/bench.gcx";
-	const char *filename = "C:/Users/R/Desktop/ore/deps/scripts/unit.gsc";
+	const char *filename = "C:/Users/R/Desktop/ore/deps/cidscropt/examples/bench.gsc";
 #ifdef _WIN32
-	SetCurrentDirectoryA("C:/Users/R/Desktop/ore/deps/scripts/");
+	SetCurrentDirectoryA("C:/Users/R/Desktop/ore/deps/cidscropt/examples/");
 #endif
 #endif
 #ifdef _WIN32
@@ -121,7 +121,7 @@ int main(int argc, char **argv) {
 	LARGE_INTEGER start;
 	QueryPerformanceCounter(&start);
 
-	//vm_printf("] Starting benchmark for file '%s'\n", filename);
+	vm_printf("] Starting benchmark for file '%s'\n", filename);
 #endif
 	srand(time(0));
 	signal(SIGINT, signal_int);
@@ -154,7 +154,7 @@ int main(int argc, char **argv) {
 	QueryPerformanceCounter(&end);
 
 	double interval = (double)(end.QuadPart - start.QuadPart) / freq.QuadPart;
-	//vm_printf("Finished in %g seconds\n", interval);
+	vm_printf("Finished in %g seconds\n", interval);
 #endif
 _wait_and_exit:
 #ifdef _WIN32

@@ -208,7 +208,7 @@ typedef union {
 
 struct varval_s {
 	e_var_types_t type;
-	int flags, refs;
+	unsigned int flags, refs;
 #ifdef MEMORY_DEBUG
 	char debugstring[256];
 #endif
@@ -216,11 +216,12 @@ struct varval_s {
 };
 
 #define VF_LOCAL (1<<0)
-#define VF_CACHED (1<<1)
+//#define VF_CACHED (1<<1)
 #define VF_POINTER (1<<2)
 #define VF_UNSIGNED (1<<3)
 #define VF_FFI (1<<4)
 #define VF_NOFREE (1<<5) //DO_NOT_FREE
+#define VF_INUSE (1<<6)
 #define VV_HAS_FLAG(x,y) ( (x->flags & y) == y )
 
 const char *se_vv_to_string(vm_t *vm, varval_t *vv);

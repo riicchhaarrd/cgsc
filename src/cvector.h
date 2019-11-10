@@ -11,8 +11,8 @@ typedef struct vector_ {
 	int count;
 } vector;
 
-void vector_delete_element(vector *v, void *p);
-int vector_locate(vector*, void*);
+//void vector_delete_element(vector *v, void *p);
+//int vector_locate(vector*, void*);
 void vector_init(vector*);
 int vector_count(vector*);
 void vector_add(vector*, void*);

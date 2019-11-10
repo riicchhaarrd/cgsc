@@ -101,7 +101,7 @@ vm_long_t vv_cast_long(vm_t *vm, varval_t *vv)
 	return vv->as.longint;
 }
 
-double vv_cast_double(vm_t *vm, varval_t *vv)
+VM_INLINE double vv_cast_double(vm_t *vm, varval_t *vv)
 {
 	switch (VV_TYPE(vv))
 	{
@@ -322,19 +322,19 @@ static void print_registers(vm_t *vm) {
 		vm_printf("%s => %d\n", e_vm_reg_names[i], vm_registers[i]);
 }
 
-static uint8_t VM_INLINE read_byte(vm_t *vm) {
+uint8_t VM_INLINE read_byte(vm_t *vm) {
 	uint8_t op = vm->instr[vm_registers[REG_IP]];
 	++vm_registers[REG_IP];
 	return op;
 }
 
-static int VM_INLINE read_int(vm_t *vm) {
+int VM_INLINE read_int(vm_t *vm) {
 	int i = *(int*)(vm->instr + vm_registers[REG_IP]);
 	vm_registers[REG_IP] += sizeof(int);
 	return i;
 }
 
-static float VM_INLINE read_float(vm_t *vm) {
+float VM_INLINE read_float(vm_t *vm) {
 	float f = *(float*)(vm->instr + vm_registers[REG_IP]);
 	vm_registers[REG_IP] += sizeof(float);
 	return f;
@@ -747,8 +747,8 @@ typedef struct
 	size_t nelements;
 } vm_vector_t;
 
-static VM_INLINE size_t vm_vector_num_elements(vm_vector_t *v) { return v->nelements; }
-static VM_INLINE vm_scalar_t vm_vector_dot(vm_vector_t *a, vm_vector_t *b) {
+VM_INLINE size_t vm_vector_num_elements(vm_vector_t *v) { return v->nelements; }
+VM_INLINE vm_scalar_t vm_vector_dot(vm_vector_t *a, vm_vector_t *b) {
 	vm_scalar_t total = 0.0;
 	int na = vm_vector_num_elements(a);
 	int nb = vm_vector_num_elements(b);
@@ -757,15 +757,15 @@ static VM_INLINE vm_scalar_t vm_vector_dot(vm_vector_t *a, vm_vector_t *b) {
 		total += (a->value[i % na] * b->value[i % nb]);
 	return total;
 }
-static VM_INLINE vm_scalar_t vm_vector_length2(vm_vector_t *v) { return vm_vector_dot(v, v); }
-static VM_INLINE vm_vector_length(vm_vector_t *v) { return sqrt(vm_vector_length2(v)); }
+VM_INLINE vm_scalar_t vm_vector_length2(vm_vector_t *v) { return vm_vector_dot(v, v); }
+VM_INLINE vm_vector_length(vm_vector_t *v) { return sqrt(vm_vector_length2(v)); }
 
 static vm_vector_t _vconst0;
 static vm_vector_t _vconst1;
 static vm_vector_t _vconst2;
 static vm_vector_t _vconst3;
 
-static bool vv_cast_vector(vm_t *vm, varval_t *vv, vm_vector_t *vec)
+VM_INLINE bool vv_cast_vector(vm_t *vm, varval_t *vv, vm_vector_t *vec)
 {
 	bool success = true;
 
@@ -790,7 +790,7 @@ static bool vv_cast_vector(vm_t *vm, varval_t *vv, vm_vector_t *vec)
 	return success;
 }
 
-static bool stack_pop_vector(vm_t *vm, vm_vector_t *vec)
+VM_INLINE bool stack_pop_vector(vm_t *vm, vm_vector_t *vec)
 {
 	varval_t *vv = (varval_t*)stack_pop(vm);
 	bool b = vv_cast_vector(vm, vv, vec);
@@ -817,7 +817,7 @@ void se_addnvector(vm_t *vm, const vm_vector_t *vec) {
 	}
 }
 
-void vm_vector_math_op(vm_t *vm, vm_vector_t *va, vm_vector_t *vb, vm_vector_t *vc, int op)
+VM_INLINE void vm_vector_math_op(vm_t *vm, vm_vector_t *va, vm_vector_t *vb, vm_vector_t *vc, int op)
 {
 	int na = va->nelements;
 	int nb = vb->nelements;
@@ -843,7 +843,7 @@ MATH_VEC_OP_MACRO(OP_MUL, *)
 	vc->nelements = nm;
 }
 
-static float stack_pop_float(vm_t *vm) {
+VM_INLINE float stack_pop_float(vm_t *vm) {
 	varval_t *vv = (varval_t*)stack_pop(vm);
 	float f = (float)vv_cast_double(vm, vv);
 	se_vv_free(vm, vv);
@@ -1022,7 +1022,7 @@ static VM_INLINE int vm_jit(vm_t *vm, int instr, unsigned char *asm)
 //we're using a default primitive types use copy instead of reference so any time that stack_pop is used, free the value (try to when the refs are <= 0)
 //use se_vv_free(vm, vv);
 
-static VM_INLINE int vm_execute(vm_t *vm, int instr) {
+VM_INLINE int vm_execute(vm_t *vm, int instr) {
 #if 0
 	if (instr < OP_END_OF_LIST) {
 		vm_printf("%s\n", e_opcodes_strings[instr]);
@@ -2476,7 +2476,7 @@ int vm_run_active_threads(vm_t *vm, int frametime) {
 	return E_VM_RET_NONE;
 }
 
-int vm_exec_thread_pointer(vm_t *vm, int fp, int numargs) {
+VM_INLINE int vm_exec_thread_pointer(vm_t *vm, int fp, int numargs) {
 	vm->thrunner = NULL;
 
 	se_addint(vm, numargs);
@@ -2875,8 +2875,21 @@ vm_t *vm_create() {
 	vm->m_printf_hook = printf;
 
 	//clear the var cache
-	memset(&vm->varcache, 0, sizeof(vm->varcache));
-	vm->varcachesize = 0;
+	//memset(&vm->varcache, 0, sizeof(vm->varcache));
+	//vm->varcachesize = 0;
+	//vector_init(&vm->varcachearray);
+	stk_init(&vm->varcacheavail);
+	vm->varcacheindex = 0;
+	vm->varcachemax = MAX_CACHED_VARIABLES;
+	//initial empty variables allocation
+	for (size_t i = 0; i < vm->varcachemax; ++i)
+	{
+		varval_t *vv = (varval_t*)vm_mem_alloc(vm, sizeof(varval_t));
+		memset(vv, 0, sizeof(varval_t));
+		//vector_add(&vm->varcachearray, vv);
+		stk_push(&vm->varcacheavail, vv);
+		//printf("stk cap:%d,sz:%d\n", vm->varcacheavail.capacity, vm->varcacheavail.size);
+	}
 
 	array_init(&vm->structs, cstruct_t);
 	array_init(&vm->libs, vm_ffi_lib_t);
@@ -2884,7 +2897,7 @@ vm_t *vm_create() {
 	vector_init(&vm->ffi_callbacks);
 
 	vector_init(&vm->__mem_allocations);
-	vector_init(&vm->vars);
+	//vector_init(&vm->vars);
 
 	vector_init(&vm->functioninfo);
 
@@ -3053,7 +3066,7 @@ void vm_free(vm_t *vm) {
 		return;
 	vm->thrunner = NULL;
 
-	int num_vars_left = vector_count(&vm->vars);
+	//int num_vars_left = vector_count(&vm->vars);
 	//vm_printf("num vars left =%d\n", num_vars_left);
 
 	for (int evi = vm->events.size; evi--;)
@@ -3135,7 +3148,7 @@ void vm_free(vm_t *vm) {
 
 	//not sure about this, after long time not working on this forgot really what i intended, but i think this should be ok ish
 	//try normally
-
+#if 0
 	while (vector_count(&vm->vars) > 0)
 	{
 		for (int i = 0; i < vector_count(&vm->vars); i++) {
@@ -3157,6 +3170,7 @@ void vm_free(vm_t *vm) {
 		}
 		//vm_printf("vec count = %d\n", vector_count(&vm->vars));
 	}
+#endif
 #if 0
 	for (int i = vector_count(&vm->vars) - 1; i > -1; i--) {
 		varval_t *vv = (varval_t*)vector_get(&vm->vars, i);
@@ -3177,7 +3191,28 @@ void vm_free(vm_t *vm) {
 		vm_mem_free(vm, cb);
 	}
 	vector_free(&vm->ffi_callbacks);
-	vector_free(&vm->vars);
+	//vector_free(&vm->vars);
+
+	//free all the variables
+#if 0
+	for (size_t i = 0; i < vm->varcachemax; ++i)
+	{
+		varval_t *vv = (varval_t*)vector_get(&vm->varcachearray, i);
+		vm_mem_free(vm, vv);
+	}
+#endif
+
+	//printf("stk cap:%d,sz:%d\n", vm->varcacheavail.capacity, vm->varcacheavail.size);
+
+	while(vm->varcacheavail.size > 0)
+	{
+		varval_t *vv = (varval_t*)stk_pop(&vm->varcacheavail);
+		//printf("stk cap:%d,sz:%d\n", vm->varcacheavail.capacity, vm->varcacheavail.size);
+		vm_mem_free(vm, vv);
+	}
+
+	stk_free(&vm->varcacheavail);
+	//vector_free(&vm->varcachearray);
 
 	for (int i = 0; i < MAX_SCRIPT_THREADS; i++) {
 		if (vm->threadrunners[i].stack != NULL)

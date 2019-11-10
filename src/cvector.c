@@ -49,7 +49,7 @@ void *vector_get(vector *v, int index) {
 	}
 	return v->data[index];
 }
-
+#if 0
 int vector_locate(vector *v, void *p) {
 	for (int i = 0; i < v->count; i++) {
 		if (v->data[i] == p)
@@ -63,6 +63,7 @@ void vector_delete_element(vector *v, void *p) {
 	if (loc != -1)
 		vector_delete(v, loc);
 }
+#endif
 
 void vector_delete(vector *v, int index) {
 	if (index >= v->count) {
