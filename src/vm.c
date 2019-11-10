@@ -817,7 +817,7 @@ void se_addnvector(vm_t *vm, const vm_vector_t *vec) {
 	}
 }
 
-VM_INLINE void vm_vector_math_op(vm_t *vm, vm_vector_t *va, vm_vector_t *vb, vm_vector_t *vc, int op)
+void vm_vector_math_op(vm_t *vm, vm_vector_t *va, vm_vector_t *vb, vm_vector_t *vc, int op)
 {
 	int na = va->nelements;
 	int nb = vb->nelements;

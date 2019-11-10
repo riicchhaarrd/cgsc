@@ -1,5 +1,5 @@
 #!/bin/bash
-cc="gcc -m32 -w -g -O2 -std=gnu99 -fPIC -DCIDSCROPT_STANDALONE"
+cc="gcc -m32 -w -g -O3 -std=gnu99 -fPIC -DCIDSCROPT_STANDALONE"
 #cc="g++ -s -O2 -std=c++11"
 cd src
 mkdir -p obj
