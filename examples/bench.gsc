@@ -1,3 +1,4 @@
+#!/usr/bin/env cidscropt
 fibR(n)
 {
 	if(n < 2) {

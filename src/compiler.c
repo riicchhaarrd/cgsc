@@ -2305,19 +2305,19 @@ static int pre_buf(vm_compiler_opts_t *opts, char *buf, size_t sz, kstring_t *ou
 		} break;
 
 		case TK_SHARP:
-			if (pp_accept(pp, TK_NOT))
+			if (!pp_accept(pp, TK_IDENT) && pp->scriptbuffer[pp->curpos] != '!')
+			{
+				token = parser_read_next_token(pp);
+				return pre_err(pp, "expected identifier got %s %d\n%s", lex_token_strings[token], token, &buf[pft]);
+			}
+			if (pp->scriptbuffer[pp->curpos] == '!')
 			{
 				//shebang ignore this
 				int loc = pp_locate(pp, TK_NEWLINE, NULL);
 				if (loc == -1)
 					return pre_err(pp, "unexpected end of file");
 				pp_goto(pp, loc);
-			} else if (!pp_accept(pp, TK_IDENT))
-			{
-				token = parser_read_next_token(pp);
-				return pre_err(pp, "expected identifier got %s %d\n%s", lex_token_strings[token], token, &buf[pft]);
-			}
-			if (!strcmp(pp->string, "endif")) {
+			} else if (!strcmp(pp->string, "endif")) {
 
 			}
 			else if (!strcmp(pp->string, "else")) {
