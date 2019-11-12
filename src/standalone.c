@@ -89,7 +89,8 @@ void run_script(const char *script)
 }
 #endif
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv, char **envp)
+{
 	//SDL_Init(SDL_INIT_VIDEO);
 #ifdef __EMSCRIPTEN__
 	return 0;
@@ -142,7 +143,28 @@ int main(int argc, char **argv) {
 	vm = vm_create();
 	vm_add_program(vm, compiler.program, compiler.program_size, filename);
 	compiler_cleanup(&compiler);
-	vm_exec_thread(vm, "main", 0);
+	se_addint(vm, argc);
+	varval_t *args_array = se_createarray(vm);
+	for (unsigned int i = 0; i < argc; ++i)
+	{
+		se_addstring(vm, argv[i]);
+		varval_t *av = (varval_t*)stack_pop(vm);
+		se_vv_set_field(vm, args_array, i++, av);
+	}
+	stack_push_vv(vm, args_array);
+
+	//push environment variables
+	unsigned int i = 0;
+	varval_t *env_array = se_createarray(vm);
+	for (char **env = envp; *env != 0; env++)
+	{
+		se_addstring(vm, *env);
+		varval_t *av = (varval_t*)stack_pop(vm);
+		se_vv_set_field(vm, env_array, i++, av);
+	}
+	stack_push_vv(vm, env_array);
+
+	vm_exec_thread(vm, "main", 3);
 
 	while (vm_get_num_active_threadrunners(vm) > 0) {
 		vm_run_active_threads(vm, fps_delta);
