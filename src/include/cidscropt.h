@@ -186,6 +186,7 @@ typedef struct {
 } vt_object_t;
 
 typedef double vm_scalar_t;
+typedef int64_t vm_iscalar_t;
 
 typedef union {
 	double dbl;

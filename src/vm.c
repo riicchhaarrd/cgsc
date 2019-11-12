@@ -675,6 +675,12 @@ void se_addscalar(vm_t *vm, vm_scalar_t s) {
 	stack_push_vv(vm, vv);
 }
 
+void se_addiscalar(vm_t *vm, vm_iscalar_t s) {
+	varval_t *vv = se_vv_create(vm, VAR_TYPE_LONG);
+	vv->as.longint = s;
+	stack_push_vv(vm, vv);
+}
+
 void se_register_stockfunction_set(vm_t *vm, stockfunction_t *set) {
 	vm->stockfunctionsets[vm->numstockfunctionsets++] = set;
 }
@@ -743,8 +749,13 @@ static vm_scalar_t stack_pop_scalar(vm_t *vm) {
 
 typedef struct
 {
-	vm_scalar_t value[16]; //4x4 matrix use this as max?
+	union
+	{
+		vm_scalar_t value[16]; //4x4 matrix use this as max?
+		vm_iscalar_t ivalue[16];
+	};
 	size_t nelements;
+	bool integral;
 } vm_vector_t;
 
 VM_INLINE size_t vm_vector_num_elements(vm_vector_t *v) { return v->nelements; }
@@ -772,12 +783,17 @@ VM_INLINE bool vv_cast_vector(vm_t *vm, varval_t *vv, vm_vector_t *vec)
 	if (VV_IS_NUMBER(vv))
 	{
 		vec->nelements = 1;
-		vec->value[0] = vv_cast_double(vm, vv);
+		vec->integral = VV_IS_INTEGRAL(vv);
+		if (vec->integral)
+			vec->ivalue[0] = vv_cast_long(vm, vv);
+		else
+			vec->value[0] = vv_cast_double(vm, vv);
 	}
 	else {
 		switch (VV_TYPE(vv))
 		{
 		case VAR_TYPE_VECTOR:
+			vec->integral = false;
 			vec->nelements = 3;
 			for (int i = 3; i--;)
 				vec->value[i] = vv->as.vec[i];
@@ -801,7 +817,10 @@ VM_INLINE bool stack_pop_vector(vm_t *vm, vm_vector_t *vec)
 void se_addnvector(vm_t *vm, const vm_vector_t *vec) {
 	switch (vec->nelements) {
 		case 1:
-			se_addscalar(vm, vec->value[0]);
+			if (vec->integral)
+				se_addiscalar(vm, vec->ivalue[0]);
+			else
+				se_addscalar(vm, vec->value[0]);
 			break;
 		case 3: {
 			varval_t * vv = se_vv_create(vm, VAR_TYPE_VECTOR);
@@ -825,21 +844,44 @@ void vm_vector_math_op(vm_t *vm, vm_vector_t *va, vm_vector_t *vb, vm_vector_t *
 	vm_scalar_t *a = (vm_scalar_t*)&va->value[0];
 	vm_scalar_t *b = (vm_scalar_t*)&vb->value[0];
 	vm_scalar_t *c = (vm_scalar_t*)&vc->value[0];
+
+	vm_iscalar_t *ia = (vm_iscalar_t*)&va->ivalue[0];
+	vm_iscalar_t *ib = (vm_iscalar_t*)&vb->ivalue[0];
+	vm_iscalar_t *ic = (vm_iscalar_t*)&vc->ivalue[0];
 	//vm_printf("na=%d,nb=%d,max=%d\n", na, nb, nm);
+
 #define MATH_VEC_OP_MACRO(x, y) \
 case x: \
 for (int i = nm; i--;) \
 c[i] = a[i % na] y b[i % nb]; \
-break; \
+break;
+#define MATH_IVEC_OP_MACRO(x, y) \
+case x: \
+for (int i = nm; i--;) \
+ic[i] = ia[i % na] y ib[i % nb]; \
+break;
 	
-	switch (op)
+	if (va->integral && vb->integral)
 	{
-MATH_VEC_OP_MACRO(OP_SUB, -)
-MATH_VEC_OP_MACRO(OP_ADD, +)
-MATH_VEC_OP_MACRO(OP_DIV, /)
-MATH_VEC_OP_MACRO(OP_MUL, *)
+		switch (op)
+		{
+				MATH_IVEC_OP_MACRO(OP_SUB, -)
+				MATH_IVEC_OP_MACRO(OP_ADD, +)
+				MATH_IVEC_OP_MACRO(OP_DIV, / )
+				MATH_IVEC_OP_MACRO(OP_MUL, *)
+		}
+		vc->integral = true;
 	}
-
+	else {
+		switch (op)
+		{
+				MATH_VEC_OP_MACRO(OP_SUB, -)
+				MATH_VEC_OP_MACRO(OP_ADD, +)
+				MATH_VEC_OP_MACRO(OP_DIV, / )
+				MATH_VEC_OP_MACRO(OP_MUL, *)
+		}
+		vc->integral = false;
+	}
 	vc->nelements = nm;
 }
 
@@ -1722,10 +1764,11 @@ int vm_execute(vm_t *vm, int instr) {
 #endif
 		} break;
 		case OP_ADD: {
-			varval_t *b = (varval_t*)stack_pop(vm);
-			varval_t *a = (varval_t*)stack_pop(vm);
-			if (VV_IS_NUMBER(a) && VV_IS_NUMBER(b))
+			vm_vector_t vec, vec2, result;
+			if (VV_IS_NUMBER(stack_current()) && VV_IS_NUMBER(stack_get(vm,1)))
 			{
+				unhandled:
+#if 0
 				int ib;
 				int ia;
 
@@ -1742,8 +1785,18 @@ int vm_execute(vm_t *vm, int instr) {
 					fa += fb;
 					se_addfloat(vm, fa);
 				}
+#endif
+				if (!stack_pop_vector(vm, &vec2))
+					return E_VM_RET_ERROR;
+				if (!stack_pop_vector(vm, &vec))
+					return E_VM_RET_ERROR;
+				//vm_vector_sub(&vec, 1.f);
+				vm_vector_math_op(vm, &vec, &vec2, &result, instr);
+				se_addnvector(vm, &result);
 			}
 			else {
+				varval_t *b = (varval_t*)stack_pop(vm);
+				varval_t *a = (varval_t*)stack_pop(vm);
 				if (
 					(VV_TYPE(b) == VAR_TYPE_STRING || VV_TYPE(a) == VAR_TYPE_STRING)
 					||
@@ -1790,9 +1843,9 @@ int vm_execute(vm_t *vm, int instr) {
 				{
 					goto unhandled;
 				}
+				se_vv_free(vm, a);
+				se_vv_free(vm, b);
 			}
-			se_vv_free(vm, a);
-			se_vv_free(vm, b);
 		} break;
 #if 0
 		case OP_DIV: {
@@ -2870,6 +2923,10 @@ vm_t *vm_create() {
 	_vconst1.nelements = 1;
 	_vconst2.nelements = 1;
 	_vconst3.nelements = 1;
+	_vconst0.integral = false;
+	_vconst1.integral = false;
+	_vconst2.integral = false;
+	_vconst3.integral = false;
 
 	memset(vm, 0, sizeof(vm_t));
 	vm->m_printf_hook = printf;
