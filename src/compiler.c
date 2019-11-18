@@ -1554,7 +1554,7 @@ accept_ident:
 			program_add_short(pp, index);
 		}
 		pp_accept(pp, TK_SEMICOLON);
-	}
+	}/*
 	else if (pp_accept(pp, TK_LBRACK)) {
 		if (!pp_expect(pp, TK_STRING))
 			return 1;
@@ -1563,7 +1563,7 @@ accept_ident:
 		pp_expect(pp, TK_ASSIGN);
 		pp_expect(pp, TK_STRING);
 		pp_accept(pp, TK_SEMICOLON);
-	}
+	}*/ //doesn't do anything for now, so commenting out
 	else if (pp_accept(pp, TK_LPAREN)) {
 		//definition :)
 

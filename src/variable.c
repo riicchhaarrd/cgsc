@@ -196,6 +196,30 @@ void se_vv_string_free(vm_t *vm, varval_t *vv) {
 	vv->as.string = NULL;
 }
 
+int se_vv_enumerate_fields(vm_t *vm, varval_t *vv, int (*callback_fn)(vm_t*,const char *field_name,vt_object_field_t*,void *ud), void *userdata)
+{
+	if (!VV_USE_REF(vv)) {
+		vm_error(vm, -1, "can't enumerate fields on non-object");
+		return 1;
+	}
+	vt_object_t *obj = vv->as.obj;
+	vt_object_field_t *field = NULL;
+	if (obj->custom != NULL) {
+		for (int i = 0; obj->custom[i].name; i++)
+		{
+			if (callback_fn(vm, obj->custom[i].name, NULL, userdata) > 0)
+				break;
+		}
+	}
+	for (int i = 0; i < vector_count(&obj->fields); i++) {
+		vt_object_field_t *ff = (vt_object_field_t*)vector_get(&obj->fields, i);
+		const char *as_str = se_index_to_string(vm, ff->stringindex);
+		if (callback_fn(vm, as_str, ff, userdata) > 0)
+			break;
+	}
+	return 0;
+}
+
 varval_t *se_vv_get_field(vm_t *vm, varval_t *vv, int key) {
 	if (!VV_USE_REF(vv)) {
 		vm_printf("tried to get key on non-object\n");

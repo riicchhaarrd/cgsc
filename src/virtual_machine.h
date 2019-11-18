@@ -143,7 +143,6 @@ struct vm_s {
 
 	void *m_userpointer;
 	int (*m_printf_hook)(const char *, ...);
-
 	dynarray structs;
 	dynarray libs;
 	dynarray events;

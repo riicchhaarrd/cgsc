@@ -37,6 +37,29 @@
 
 #include "asm.h"
 
+int se_vv_container_size(vm_t *vm, varval_t *vv)
+{
+	switch (VV_TYPE(vv))
+	{
+		case VAR_TYPE_OBJECT:
+		{
+			switch (vv->as.obj->type)
+			{
+				case VT_OBJECT_BUFFER: {
+					vt_buffer_t *vtb = (vt_buffer_t*)vv->as.obj->obj;// DYN_TYPE_HDR(vt_buffer_t, ((char*)vv_arr->as.obj->obj));
+					return vtb->size;
+				} break;
+			}
+		} break;
+		case VAR_TYPE_ARRAY:
+			return vector_count(&vv->as.obj->fields);//se_addint(vm, vv_arr->obj->numfields);
+		case VAR_TYPE_STRING:
+		case VAR_TYPE_INDEXED_STRING:
+			return strlen(se_vv_to_string(vm, vv));
+	}
+	return -1;
+}
+
 int vv_integer_internal_size(varval_t *vv)
 {
 	if (VV_TYPE(vv) == VAR_TYPE_NULL)
@@ -681,8 +704,26 @@ void se_addiscalar(vm_t *vm, vm_iscalar_t s) {
 	stack_push_vv(vm, vv);
 }
 
-void se_register_stockfunction_set(vm_t *vm, stockfunction_t *set) {
-	vm->stockfunctionsets[vm->numstockfunctionsets++] = set;
+char *vm_strdup(vm_t *vm, const char *str)
+{
+	size_t new_size = strlen(str) + 1;
+	char *new_str = vm_mem_alloc(vm, new_size);
+	snprintf(new_str, new_size, "%s", str);
+	return new_str;
+}
+
+void se_register_stockfunction_set(vm_t *vm, stockfunction_t *sf)
+{
+	for (int i = 0; sf[i].nameinfo; i++) {
+		char *copy = vm_strdup(vm, sf[i].nameinfo);
+		char *atptr = strchr(copy, '@');
+		if (atptr != NULL)
+		{
+			*atptr = '\0'; //cut it off
+		}
+		sf[i].name = copy;
+	}
+	vm->stockfunctionsets[vm->numstockfunctionsets++] = sf;
 }
 
 void se_register_stockmethod_set(vm_t *vm, int object_type, stockmethod_t *set) {
@@ -1223,32 +1264,13 @@ int vm_execute(vm_t *vm, int instr) {
 
 		case OP_GET_LENGTH: {
 			varval_t *vv_arr = (varval_t*)stack_pop(vm);
+			int len = se_vv_container_size(vm, vv_arr);
+			if (len == -1)
 			{
-				switch (VV_TYPE(vv_arr))
-				{
-				case VAR_TYPE_OBJECT:
-				{
-					switch (vv_arr->as.obj->type)
-					{
-					case VT_OBJECT_BUFFER: {
-						vt_buffer_t *vtb = (vt_buffer_t*)vv_arr->as.obj->obj;// DYN_TYPE_HDR(vt_buffer_t, ((char*)vv_arr->as.obj->obj));
-						se_addint(vm, vtb->size);
-					} break;
-					}
-				} break;
-				case VAR_TYPE_ARRAY:
-					se_addint(vm, vector_count(&vv_arr->as.obj->fields));//se_addint(vm, vv_arr->obj->numfields);
-					break;
-				case VAR_TYPE_STRING:
-				case VAR_TYPE_INDEXED_STRING:
-					se_addint(vm, strlen(se_vv_to_string(vm, vv_arr)));
-					break;
-				default:
-					vm_printf("'%s' is not an array, cannot get length!\n", e_var_types_strings[VV_TYPE(vv_arr)]);
-					se_addnull(vm);
-					break;
-				}
+				vm_printf("'%s' is not an container type, cannot get length!\n", e_var_types_strings[VV_TYPE(vv_arr)]);
+				se_addnull(vm);
 			}
+			se_addint(vm, len);
 			se_vv_free(vm, vv_arr);
 #if 0
 			vm_printf("refs = %d\n", vv_arr->refs);
@@ -1280,7 +1302,26 @@ int vm_execute(vm_t *vm, int instr) {
 					vt_buffer_t *vtb = (vt_buffer_t*)arr->as.obj->obj;
 					se_addchar(vm, vtb->data[ind_as_int%vtb->size]);
 				} break;
-				default: goto just_normal_objload;
+				//default: goto just_normal_objload;
+				default:
+				{
+					if (VV_TYPE(arr_index) == VAR_TYPE_STRING)
+					{
+						const char *si = se_vv_to_string(vm, arr_index);
+						vt_istring_t *istr = se_istring_find(vm, si);
+						if (istr != NULL)
+						{
+							stack_push_vv(vm, arr);
+							stack_push(vm, istr->index);
+							//push these back up
+							se_vv_free(vm, arr_index);
+							return vm_execute(vm, OP_LOAD_FIELD_VM);
+						}
+						else goto just_normal_objload;
+					}
+					else
+						goto just_normal_objload;
+				}
 				}
 			}
 			else if (VV_TYPE(arr) == VAR_TYPE_ARRAY) {
@@ -1433,6 +1474,65 @@ int vm_execute(vm_t *vm, int instr) {
 					}
 					else
 						se_addnull(vm);
+			}
+			//yep also need to free this e.g what if the compiler allowed new Object().objfield;
+			se_vv_free(vm, vv_obj);
+		} break;
+
+		//copy of above, just for internal use atm
+		case OP_LOAD_FIELD_VM: {
+
+			int str_index = stack_pop(vm);
+			varval_t *vv_obj = (varval_t*)stack_pop(vm);
+
+			if (str_index >= vm->istringlistsize)
+				vm_printf("str_index out of bounds!!\n");
+			if (VV_TYPE(vv_obj) == VAR_TYPE_OBJECT && vv_obj->as.obj->type == VT_OBJECT_BUFFER)
+			{
+				vt_buffer_t *vtb = (vt_buffer_t*)vv_obj->as.obj->obj;// DYN_TYPE_HDR(vt_buffer_t, (char*)vv_obj->as.obj->obj);
+				cstruct_t *cs = vm_get_struct(vm, vtb->type);
+				if (cs)
+				{
+					const char *str = vm->istringlist[str_index].string;
+					cstructfield_t *field = vm_get_struct_field(vm, cs, str);
+					if (field)
+					{
+						varval_t *vv = vm_get_struct_field_value(vm, cs, field, vtb); //will always be a copy because no references it doesn't exist it needs to be made
+						stack_push_vv(vm, vv);
+					}
+					else
+						vm_printf("field not found for struct %d!\n", cs->name);
+				}
+				else
+					vm_printf("cs is NULL! %d\n", vtb->type);
+			}
+			else {
+				const char *str = vm->istringlist[str_index].string;
+				//vm_printf("LOAD_FIELD{%s}\n", vm->istringlist[str_index].string);
+				if (VV_TYPE(vv_obj) == VAR_TYPE_OBJECT)
+				{
+					//se_vv_get_field also uses stack_pop but that is up to the compiler to provide with expressions that dont store to add a OP_POP
+					varval_t *vv = se_vv_get_field(vm, vv_obj, str_index);
+					if (NULL == vv)
+						se_addnull(vm);
+					else {
+						varval_t *copy = vv;
+						if (!VV_USE_REF(vv))
+							copy = se_vv_copy(vm, vv);
+						stack_push_vv(vm, copy);
+					}
+				}
+				else if (VV_TYPE(vv_obj) == VAR_TYPE_VECTOR) {
+					if (*str == 'x' || *str == 'y' || *str == 'z') {
+						se_addfloat(vm, vv_obj->as.vec[*str - 'x']);
+					}
+					else {
+						vm_printf("cannot get {%s} of vector!\n", str);
+						se_addnull(vm);
+					}
+				}
+				else
+					se_addnull(vm);
 			}
 			//yep also need to free this e.g what if the compiler allowed new Object().objfield;
 			se_vv_free(vm, vv_obj);
@@ -2904,6 +3004,20 @@ int vm_add_program(vm_t *vm, unsigned char *buffer, size_t sz, const char *tag)
 	return 0;
 }
 
+int se_error(vm_t *vm, const char *errstr, ...)
+{
+	char dest[1024 * 16];
+	va_list argptr;
+	if (errstr != NULL) {
+		va_start(argptr, errstr);
+		vsprintf(dest, errstr, argptr);
+		va_end(argptr);
+		vm_printf("%s\n", dest);
+	}
+	vm_error(vm, E_VM_ERR_ERROR, "%s", dest);
+	return 0;
+}
+
 vm_t *vm_create() {
 	vm_t *vm = NULL;
 	vm = (vm_t*)malloc(sizeof(vm_t));
@@ -3324,6 +3438,14 @@ void vm_free(vm_t *vm) {
 		vm_mem_free(vm, prog->data);
 	}
 	array_free(&vm->programs);
+
+	for (int fff = 0; fff < vm->numstockfunctionsets; fff++) {
+		stockfunction_t *sf = vm->stockfunctionsets[fff];
+		for (int i = 0; sf[i].name; i++) {
+			vm_mem_free(vm, sf[i].name);
+		}
+	}
+
 	free(vm);
 }
 

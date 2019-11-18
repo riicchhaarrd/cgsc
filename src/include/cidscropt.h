@@ -79,10 +79,12 @@ void vm_free(vm_t *vm);
 int vm_add_program(vm_t *vm, unsigned char *buffer, size_t sz, const char *tag);
 vm_t *vm_create();
 void vm_error(vm_t*, int, const char *, ...);
+int se_error(vm_t*, const char *, ...);
 
 typedef struct {
-	const char *name;
+	const char *nameinfo;
 	int(*call)(vm_t*);
+	char *name;
 } stockfunction_t;
 
 typedef struct {
@@ -246,6 +248,8 @@ int se_vv_free_r(vm_t*, varval_t *vv,const char *,int);
 void se_vv_free_force(vm_t *vm, varval_t *vv);
 varval_t *se_vv_get_field(vm_t *, varval_t *vv, int key);
 
+int se_vv_enumerate_fields(vm_t *vm, varval_t *vv, int(*callback_fn)(vm_t*, const char *field_name, vt_object_field_t*, void *ud), void *userdata);
+int se_vv_container_size(vm_t *vm, varval_t *vv);
 varval_t *se_createarray(vm_t*);
 varval_t *se_createobject(vm_t *vm, int type, vt_obj_field_custom_t*, void *constructor, void *deconstructor);
 void se_addobject(vm_t *vm, varval_t*);

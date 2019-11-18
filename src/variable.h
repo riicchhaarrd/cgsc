@@ -6,6 +6,8 @@
 #define MAX_VARIABLES 1024
 #define MAX_LOCAL_VARS (32)
 
+#define VV_CAST(x) ((varval_t*)x)
+#define VV_CAST_VAR(x,y) varval_t* x = VV_CAST(y)
 #define VV_INTEGER uintptr_t
 #define VV_USE_REF(x) (x != NULL && (x->type==VAR_TYPE_OBJECT || x->type==VAR_TYPE_ARRAY))
 #define VV_IS_STRING(x) ((x)&&(x->type==VAR_TYPE_STRING||x->type==VAR_TYPE_INDEXED_STRING))
