@@ -199,6 +199,7 @@ typedef union {
 	int integer;
 	short shortint;
 	long long longint;
+	intptr_t intptr;
 
 	//intptr_t ptr;
 	char *string;

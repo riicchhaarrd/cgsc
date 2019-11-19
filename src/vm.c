@@ -1808,13 +1808,20 @@ int vm_execute(vm_t *vm, int instr) {
 			varval_t *ptr = (varval_t*)stack_pop(vm);
 			if (!VV_IS_POINTER(ptr))
 			{
-				vm_printf("not a pointer!\n");
-				return E_VM_RET_ERROR;
+				//vm_printf("not a pointer!\n");
+				//return E_VM_RET_ERROR;
+				//UNSAFE!!
+				//just do a normal c pointer dereference
+				varval_t *nv = se_vv_create(vm, VAR_TYPE_LONG); //should be VAR_TYPE_C_POINTER
+				vm_long_t longval = vv_cast_long(vm, ptr);
+				nv->as.intptr = *(intptr_t*)longval;
+				stack_push_vv(vm, nv);
 			}
-
-			varval_t *vv = (varval_t*)ptr->as.ptr;
-
-			stack_push_vv(vm, vv);
+			else
+			{
+				varval_t *vv = (varval_t*)ptr->as.ptr;
+				stack_push_vv(vm, vv);
+			}
 #if 0
 			varval_t *nv = se_vv_create(vm, VV_TYPE(ptr));
 			nv->flags |= VF_POINTER;
