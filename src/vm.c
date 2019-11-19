@@ -73,12 +73,12 @@ int vv_integer_internal_size(varval_t *vv)
 
 	switch (VV_TYPE(vv))
 	{
-	case VAR_TYPE_CHAR: return sizeof(char);
-	case VAR_TYPE_INT: return sizeof(int);
-	case VAR_TYPE_SHORT: return sizeof(short);
-	case VAR_TYPE_LONG: return sizeof(long long);
-	case VAR_TYPE_DOUBLE: return sizeof(double);
-	case VAR_TYPE_FLOAT: return sizeof(float);
+	case VAR_TYPE_CHAR: return sizeof(vv->as.character);
+	case VAR_TYPE_INT: return sizeof(vv->as.integer);
+	case VAR_TYPE_SHORT: return sizeof(vv->as.shortint);
+	case VAR_TYPE_LONG: return sizeof(vv->as.longint);
+	case VAR_TYPE_DOUBLE: return sizeof(vv->as.dbl);
+	case VAR_TYPE_FLOAT: return sizeof(vv->as.flt);
 	case VAR_TYPE_VECTOR: return sizeof(vv->as.vec);
 	case VAR_TYPE_OBJECT:
 	{
