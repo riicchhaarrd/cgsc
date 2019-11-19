@@ -398,7 +398,7 @@ static float se_vv_to_float(varval_t *vv) {
 #endif
 
 static int se_vv_to_int(vm_t *vm, varval_t *vv) {
-	int ret = 0;
+	int ret = vv->as.ptr; //for ffi pointers got back 0, so let's just make this default atm
 	switch (VV_TYPE(vv)) {
 	case VAR_TYPE_OBJECT:
 		switch (vv->as.obj->type)
