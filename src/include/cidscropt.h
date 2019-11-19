@@ -28,6 +28,7 @@ typedef struct
 	uint32_t code_offset;
 } bprogramhdr_t;
 
+typedef unsigned int vm_flags_t;
 typedef struct vm_s vm_t;
 typedef struct varval_s varval_t;
 typedef struct vm_thread_s vm_thread_t;
@@ -249,7 +250,7 @@ int se_vv_free_r(vm_t*, varval_t *vv,const char *,int);
 void se_vv_free_force(vm_t *vm, varval_t *vv);
 varval_t *se_vv_get_field(vm_t *, varval_t *vv, int key);
 
-int se_vv_enumerate_fields(vm_t *vm, varval_t *vv, int(*callback_fn)(vm_t*, const char *field_name, vt_object_field_t*, void *ud), void *userdata);
+int se_vv_enumerate_fields(vm_t *vm, varval_t *vv, int(*callback_fn)(vm_t*, const char *field_name, vt_object_field_t*, void *ud, vm_flags_t fl), void *userdata);
 int se_vv_container_size(vm_t *vm, varval_t *vv);
 varval_t *se_createarray(vm_t*);
 varval_t *se_createobject(vm_t *vm, int type, vt_obj_field_custom_t*, void *constructor, void *deconstructor);

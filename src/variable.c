@@ -196,7 +196,7 @@ void se_vv_string_free(vm_t *vm, varval_t *vv) {
 	vv->as.string = NULL;
 }
 
-int se_vv_enumerate_fields(vm_t *vm, varval_t *vv, int (*callback_fn)(vm_t*,const char *field_name,vt_object_field_t*,void *ud), void *userdata)
+int se_vv_enumerate_fields(vm_t *vm, varval_t *vv, int (*callback_fn)(vm_t*,const char *field_name,vt_object_field_t*,void *ud, vm_flags_t fl), void *userdata)
 {
 	if (!VV_USE_REF(vv)) {
 		vm_error(vm, -1, "can't enumerate fields on non-object");
@@ -207,14 +207,16 @@ int se_vv_enumerate_fields(vm_t *vm, varval_t *vv, int (*callback_fn)(vm_t*,cons
 	if (obj->custom != NULL) {
 		for (int i = 0; obj->custom[i].name; i++)
 		{
-			if (callback_fn(vm, obj->custom[i].name, NULL, userdata) > 0)
+			if (callback_fn(vm, obj->custom[i].name, NULL, userdata, 0) > 0)
 				break;
 		}
 	}
-	for (int i = 0; i < vector_count(&obj->fields); i++) {
+	size_t vc = vector_count(&obj->fields);
+	for (int i = vc; i--;)
+	{
 		vt_object_field_t *ff = (vt_object_field_t*)vector_get(&obj->fields, i);
 		const char *as_str = se_index_to_string(vm, ff->stringindex);
-		if (callback_fn(vm, as_str, ff, userdata) > 0)
+		if (callback_fn(vm, as_str, ff, userdata, i<=0) > 0)
 			break;
 	}
 	return 0;
