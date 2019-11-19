@@ -1235,13 +1235,28 @@ int vm_execute(vm_t *vm, int instr) {
 			else if (VV_TYPE(vv_arr) == VAR_TYPE_OBJECT) {
 				switch (vv_arr->as.obj->type)
 				{
-				case VT_OBJECT_BUFFER:
-				{
-					int ind_as_int = vv_cast_long(vm, vv_index);
-					vt_buffer_t *vtb = (vt_buffer_t*)vv_arr->as.obj->obj;
-					vtb->data[ind_as_int % vtb->size] = vv_cast_long(vm, vv) & 0xff;
-				} break;
-				default: goto just_normal_obj;
+					case VT_OBJECT_BUFFER:
+					{
+						int ind_as_int = vv_cast_long(vm, vv_index);
+						vt_buffer_t *vtb = (vt_buffer_t*)vv_arr->as.obj->obj;
+						vtb->data[ind_as_int % vtb->size] = vv_cast_long(vm, vv) & 0xff;
+					} break;
+					default:
+					{
+						//if (VV_IS_STRING(vv_index)) //for this case, just convert them into a string type even if they're indexes/numbers or so
+						{
+							const char *si = se_vv_to_string(vm, vv_index);
+							vt_istring_t *istr = se_istring_find(vm, si);
+							if(istr==NULL)
+								istr = se_istring_create(vm, si);
+							stack_push_vv(vm, vv_arr);
+							stack_push_vv(vm, vv);
+							stack_push(vm, istr->index);
+							//push these back up
+							se_vv_free(vm, vv_index);
+							return vm_execute(vm, OP_STORE_FIELD_VM);
+						}
+					} break;
 				}
 			}
 			else {
@@ -1305,7 +1320,7 @@ int vm_execute(vm_t *vm, int instr) {
 				//default: goto just_normal_objload;
 				default:
 				{
-					if (VV_TYPE(arr_index) == VAR_TYPE_STRING)
+					//if (VV_TYPE(arr_index) == VAR_TYPE_STRING) //even if it's not a string just make it a string and check if the key exists
 					{
 						const char *si = se_vv_to_string(vm, arr_index);
 						vt_istring_t *istr = se_istring_find(vm, si);
@@ -1319,8 +1334,8 @@ int vm_execute(vm_t *vm, int instr) {
 						}
 						else goto just_normal_objload;
 					}
-					else
-						goto just_normal_objload;
+					//else
+						//goto just_normal_objload;
 				}
 				}
 			}
@@ -1409,6 +1424,56 @@ int vm_execute(vm_t *vm, int instr) {
 				}
 			}
 			else if (VV_TYPE(vv_obj)== VAR_TYPE_ARRAY) {
+				se_vv_set_field(vm, vv_obj, str_index, vv);
+			}
+			se_vv_free(vm, vv);
+			se_vv_free(vm, vv_obj);
+#if 0
+			if (!strcmp(vm->istringlist[str_index].string, "players")) {//storing [] players
+				vv->flags |= VAR_FLAG_LEVEL_PLAYER;
+				vm_printf("refs = %d, str = %s\n", vv->refs, vm->istringlist[str_index].string);
+			}
+#endif
+		} break;
+
+		case OP_STORE_FIELD_VM: {
+			int str_index = stack_pop(vm);
+			varval_t *vv = (varval_t*)stack_pop(vm);
+			varval_t *vv_obj = (varval_t*)stack_pop(vm);
+
+			if (VV_TYPE(vv_obj) == VAR_TYPE_OBJECT)
+			{
+				if (str_index >= vm->istringlistsize)
+				{
+					vm_printf("str_index out of bounds!!\n");
+				}
+				else {
+					if (vv_obj->as.obj->type == VT_OBJECT_BUFFER)
+					{
+						vt_buffer_t *vtb = (vt_buffer_t*)vv_obj->as.obj->obj;// DYN_TYPE_HDR(vt_buffer_t, (char*)vv_obj->as.obj->obj);
+						cstruct_t *cs = vm_get_struct(vm, vtb->type);
+						if (cs)
+						{
+							const char *str = vm->istringlist[str_index].string;
+							cstructfield_t *field = vm_get_struct_field(vm, cs, str);
+							if (field)
+							{
+								//vm_printf("trying to set ptr on struct %s (%s-> type = %s, sz %d, off %d)\n", cs->name, field->name, ctypestrings[field->type], field->size, field->offset);
+								vm_set_struct_field_value(vm, cs, field, vtb, vv);
+							}
+							else
+								vm_printf("field not found for struct %d!\n", cs->name);
+						}
+						else
+							vm_printf("cs is NULL! %d\n", vtb->type);
+					}
+					else {
+						//const char *str = vm->istringlist[str_index].string; //just here for debug purpose
+						se_vv_set_field(vm, vv_obj, str_index, vv);
+					}
+				}
+			}
+			else if (VV_TYPE(vv_obj) == VAR_TYPE_ARRAY) {
 				se_vv_set_field(vm, vv_obj, str_index, vv);
 			}
 			se_vv_free(vm, vv);
