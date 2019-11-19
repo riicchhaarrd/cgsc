@@ -349,12 +349,12 @@ int sf_substr(vm_t *vm) {
 
 static int _glue_array_fields(vm_t *vm, const char *field_name, vt_object_field_t *field, void **userdata, vm_flags_t flags)
 {
-	dynstring s = (dynstring)userdata[0];
+	dynstring* s = (dynstring*)userdata[0];
 	const char *glue = (const char*)userdata[1];
 	const char *value_as_string = se_vv_to_string(vm, field->value);
-	dynadd(&s, value_as_string);
+	dynadd(s, value_as_string);
 	if(!flags) //if not last element then add glue
-	dynadd(&s, glue);
+	dynadd(s, glue);
 	return 0;
 }
 
@@ -367,7 +367,7 @@ int sf_implode(vm_t *vm)
 		return se_error(vm, "not an array");
 	dynstring s = dynalloc(32);
 	void *ud[2] = {
-		(void*)s,
+		(void*)&s,
 		(void*)glue
 	};
 	se_vv_enumerate_fields(vm, arr, _glue_array_fields, ud);
