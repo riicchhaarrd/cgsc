@@ -831,9 +831,11 @@ static int parser_factor(parser_t *pp) {
 	else if (pp_accept(pp, TK_MULTIPLY)) {
 		//dereference
 
-		if (!pp_accept(pp, TK_IDENT))
-			return 1;
-		if (parser_variable(pp, pp->string, true, false, NULL, OP_LOAD_REF))
+		//if (!pp_accept(pp, TK_IDENT))
+			//return 1;
+		//if (parser_variable(pp, pp->string, true, false, NULL, OP_LOAD_REF))
+			//return 1;
+		if (parser_expression(pp))
 			return 1;
 		program_add_opcode(pp, OP_DEREFERENCE);
 	}
