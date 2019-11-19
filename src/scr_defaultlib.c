@@ -197,6 +197,12 @@ int sf_typeof(vm_t *vm) {
 	return 1;
 }
 
+int sf_cstring(vm_t *vm) {
+	intptr_t ptr = se_getint(vm, 0);
+	se_addstring(vm, (const char*)ptr);
+	return 1;
+}
+
 int sf_sizeof(vm_t *vm) {
 
 	int vv_integer_internal_size(varval_t *vv);
@@ -1195,6 +1201,7 @@ stockfunction_t std_scriptfunctions[] = {
 	{"randomfloat", sf_randomfloat},
 	{"spawnstruct", sf_spawnstruct},
 	{ "typeof",sf_typeof },
+	{"cstring",sf_cstring},
 	{"sizeof",sf_sizeof},
 	{NULL,NULL},
 };
