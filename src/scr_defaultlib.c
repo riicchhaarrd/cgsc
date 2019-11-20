@@ -1189,8 +1189,8 @@ stockfunction_t std_scriptfunctions[] = {
 	//{"isupper", sf_isupper},
 	//{"isalpha", sf_isalpha},
 	{ "substr", sf_substr },
-	{"get_object_vars@object",sf_get_object_vars},
-	{"getarraykeys@object",sf_get_object_vars}, //alternate naming
+	{"get_object_vars",sf_get_object_vars},
+	{"getarraykeys",sf_get_object_vars}, //alternate naming
 	{ "get_in_string", sf_get_in_string },
 	{ "printf", sf_printf },
 	{ "sprintf", sf_sprintf },

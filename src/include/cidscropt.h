@@ -83,9 +83,8 @@ void vm_error(vm_t*, int, const char *, ...);
 int se_error(vm_t*, const char *, ...);
 
 typedef struct {
-	const char *nameinfo;
+	const char *name;
 	int(*call)(vm_t*);
-	char *name;
 } stockfunction_t;
 
 typedef struct {

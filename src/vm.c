@@ -714,15 +714,6 @@ char *vm_strdup(vm_t *vm, const char *str)
 
 void se_register_stockfunction_set(vm_t *vm, stockfunction_t *sf)
 {
-	for (int i = 0; sf[i].nameinfo; i++) {
-		char *copy = vm_strdup(vm, sf[i].nameinfo);
-		char *atptr = strchr(copy, '@');
-		if (atptr != NULL)
-		{
-			*atptr = '\0'; //cut it off
-		}
-		sf[i].name = copy;
-	}
 	vm->stockfunctionsets[vm->numstockfunctionsets++] = sf;
 }
 
@@ -3510,13 +3501,6 @@ void vm_free(vm_t *vm) {
 		vm_mem_free(vm, prog->data);
 	}
 	array_free(&vm->programs);
-
-	for (int fff = 0; fff < vm->numstockfunctionsets; fff++) {
-		stockfunction_t *sf = vm->stockfunctionsets[fff];
-		for (int i = 0; sf[i].name; i++) {
-			vm_mem_free(vm, sf[i].name);
-		}
-	}
 
 	free(vm);
 }
