@@ -18,6 +18,7 @@ void signal_int(int parm) {
 	if (!vm)
 		return;
 	vm->is_running = false;
+	exit(0);
 }
 
 //#define FPS_DELTA (1000 / 20)
