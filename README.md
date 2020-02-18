@@ -1,7 +1,7 @@
 <h1>GSC</h1>
 
 embeddable scripting language in C
-<p align="center">
+<p>
   <img src="https://cidscropt.org/preview.jpg">
 </p>
 <p align="center">
