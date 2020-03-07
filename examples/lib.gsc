@@ -1,5 +1,5 @@
 
-//../bin/cidscropt lib.gcx
+//../bin/gsc lib.gcx
 lib() { set_ffi_lib("lib/lib.so"); }
 
 main()

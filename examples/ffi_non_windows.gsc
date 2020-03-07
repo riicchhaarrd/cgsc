@@ -1,6 +1,6 @@
 //fun segmentation fault because was compiling for x86_64
 //i guess just find your libc or desired library path and change it
-//just compile cidscropt and do ldd bin/cidscropt for libc atleast
+//just compile gsc and do ldd bin/gsc for libc atleast
 
 std() { set_ffi_lib("/lib/i386-linux-gnu/i686/cmov/libc.so.6"); }
 

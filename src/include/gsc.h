@@ -28,6 +28,7 @@ typedef struct
 	uint32_t code_offset;
 } bprogramhdr_t;
 
+typedef unsigned int vm_flags_t;
 typedef struct vm_s vm_t;
 typedef struct varval_s varval_t;
 typedef struct vm_thread_s vm_thread_t;
@@ -79,6 +80,7 @@ void vm_free(vm_t *vm);
 int vm_add_program(vm_t *vm, unsigned char *buffer, size_t sz, const char *tag);
 vm_t *vm_create();
 void vm_error(vm_t*, int, const char *, ...);
+int se_error(vm_t*, const char *, ...);
 
 typedef struct {
 	const char *name;
@@ -186,6 +188,7 @@ typedef struct {
 } vt_object_t;
 
 typedef double vm_scalar_t;
+typedef int64_t vm_iscalar_t;
 
 typedef union {
 	double dbl;
@@ -196,6 +199,7 @@ typedef union {
 	int integer;
 	short shortint;
 	long long longint;
+	intptr_t intptr;
 
 	//intptr_t ptr;
 	char *string;
@@ -208,7 +212,7 @@ typedef union {
 
 struct varval_s {
 	e_var_types_t type;
-	int flags, refs;
+	unsigned int flags, refs;
 #ifdef MEMORY_DEBUG
 	char debugstring[256];
 #endif
@@ -216,11 +220,12 @@ struct varval_s {
 };
 
 #define VF_LOCAL (1<<0)
-#define VF_CACHED (1<<1)
+//#define VF_CACHED (1<<1)
 #define VF_POINTER (1<<2)
 #define VF_UNSIGNED (1<<3)
 #define VF_FFI (1<<4)
 #define VF_NOFREE (1<<5) //DO_NOT_FREE
+#define VF_INUSE (1<<6)
 #define VV_HAS_FLAG(x,y) ( (x->flags & y) == y )
 
 const char *se_vv_to_string(vm_t *vm, varval_t *vv);
@@ -244,6 +249,8 @@ int se_vv_free_r(vm_t*, varval_t *vv,const char *,int);
 void se_vv_free_force(vm_t *vm, varval_t *vv);
 varval_t *se_vv_get_field(vm_t *, varval_t *vv, int key);
 
+int se_vv_enumerate_fields(vm_t *vm, varval_t *vv, int(*callback_fn)(vm_t*, const char *field_name, vt_object_field_t*, void *ud, vm_flags_t fl), void *userdata);
+int se_vv_container_size(vm_t *vm, varval_t *vv);
 varval_t *se_createarray(vm_t*);
 varval_t *se_createobject(vm_t *vm, int type, vt_obj_field_custom_t*, void *constructor, void *deconstructor);
 void se_addobject(vm_t *vm, varval_t*);

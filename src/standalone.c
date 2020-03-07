@@ -1,4 +1,4 @@
-#ifdef CIDSCROPT_STANDALONE
+#ifdef GSC_STANDALONE
 #include "virtual_machine.h"
 #include "common.h"
 #include <signal.h>
@@ -18,6 +18,7 @@ void signal_int(int parm) {
 	if (!vm)
 		return;
 	vm->is_running = false;
+	exit(0);
 }
 
 //#define FPS_DELTA (1000 / 20)
@@ -89,7 +90,8 @@ void run_script(const char *script)
 }
 #endif
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv, char **envp)
+{
 	//SDL_Init(SDL_INIT_VIDEO);
 #ifdef __EMSCRIPTEN__
 	return 0;
@@ -97,11 +99,11 @@ int main(int argc, char **argv) {
 
 	if (argc > 1 && !strcmp(argv[1], "-v"))
 	{
-		printf("cidscropt standalone version (https://github.com/riicchhaarrd/cidscropt)\n");
+		printf("gsc (https://github.com/riicchhaarrd/gsc)\n");
 		return 0;
 	}
 
-#ifndef _DEBUG
+#if 1
 	if (argc < 2) {
 		vm_printf("No script specified.\n");
 		goto _wait_and_exit;
@@ -109,9 +111,9 @@ int main(int argc, char **argv) {
 	const char *filename = argv[1];
 #else
 	//const char *filename = "../examples/bench.gcx";
-	const char *filename = "C:/Users/R/Desktop/ore/deps/scripts/unit.gsc";
+	const char *filename = "C:/Users/R/Desktop/ore/deps/gsc/examples/bench.gsc";
 #ifdef _WIN32
-	SetCurrentDirectoryA("C:/Users/R/Desktop/ore/deps/scripts/");
+	SetCurrentDirectoryA("C:/Users/R/Desktop/ore/deps/gsc/examples/");
 #endif
 #endif
 #ifdef _WIN32
@@ -121,7 +123,7 @@ int main(int argc, char **argv) {
 	LARGE_INTEGER start;
 	QueryPerformanceCounter(&start);
 
-	//vm_printf("] Starting benchmark for file '%s'\n", filename);
+	vm_printf("] Starting benchmark for file '%s'\n", filename);
 #endif
 	srand(time(0));
 	signal(SIGINT, signal_int);
@@ -142,7 +144,28 @@ int main(int argc, char **argv) {
 	vm = vm_create();
 	vm_add_program(vm, compiler.program, compiler.program_size, filename);
 	compiler_cleanup(&compiler);
-	vm_exec_thread(vm, "main", 0);
+	se_addint(vm, argc);
+	varval_t *args_array = se_createarray(vm);
+	for (unsigned int i = 0; i < argc; ++i)
+	{
+		se_addstring(vm, argv[i]);
+		varval_t *av = (varval_t*)stack_pop(vm);
+		se_vv_set_field(vm, args_array, i++, av);
+	}
+	stack_push_vv(vm, args_array);
+
+	//push environment variables
+	unsigned int i = 0;
+	varval_t *env_array = se_createarray(vm);
+	for (char **env = envp; *env != 0; env++)
+	{
+		se_addstring(vm, *env);
+		varval_t *av = (varval_t*)stack_pop(vm);
+		se_vv_set_field(vm, env_array, i++, av);
+	}
+	stack_push_vv(vm, env_array);
+
+	vm_exec_thread(vm, "main", 3);
 
 	while (vm_get_num_active_threadrunners(vm) > 0) {
 		vm_run_active_threads(vm, fps_delta);
@@ -154,7 +177,7 @@ int main(int argc, char **argv) {
 	QueryPerformanceCounter(&end);
 
 	double interval = (double)(end.QuadPart - start.QuadPart) / freq.QuadPart;
-	//vm_printf("Finished in %g seconds\n", interval);
+	vm_printf("Finished in %g seconds\n", interval);
 #endif
 _wait_and_exit:
 #ifdef _WIN32

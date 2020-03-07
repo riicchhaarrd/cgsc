@@ -37,6 +37,29 @@
 
 #include "asm.h"
 
+int se_vv_container_size(vm_t *vm, varval_t *vv)
+{
+	switch (VV_TYPE(vv))
+	{
+		case VAR_TYPE_OBJECT:
+		{
+			switch (vv->as.obj->type)
+			{
+				case VT_OBJECT_BUFFER: {
+					vt_buffer_t *vtb = (vt_buffer_t*)vv->as.obj->obj;// DYN_TYPE_HDR(vt_buffer_t, ((char*)vv_arr->as.obj->obj));
+					return vtb->size;
+				} break;
+			}
+		} break;
+		case VAR_TYPE_ARRAY:
+			return vector_count(&vv->as.obj->fields);//se_addint(vm, vv_arr->obj->numfields);
+		case VAR_TYPE_STRING:
+		case VAR_TYPE_INDEXED_STRING:
+			return strlen(se_vv_to_string(vm, vv));
+	}
+	return -1;
+}
+
 int vv_integer_internal_size(varval_t *vv)
 {
 	if (VV_TYPE(vv) == VAR_TYPE_NULL)
@@ -50,12 +73,12 @@ int vv_integer_internal_size(varval_t *vv)
 
 	switch (VV_TYPE(vv))
 	{
-	case VAR_TYPE_CHAR: return 1;
-	case VAR_TYPE_INT: return 4;
-	case VAR_TYPE_SHORT: return 2;
-	case VAR_TYPE_LONG: return 8;
-	case VAR_TYPE_DOUBLE: return 8;
-	case VAR_TYPE_FLOAT: return 4;
+	case VAR_TYPE_CHAR: return sizeof(vv->as.character);
+	case VAR_TYPE_INT: return sizeof(vv->as.integer);
+	case VAR_TYPE_SHORT: return sizeof(vv->as.shortint);
+	case VAR_TYPE_LONG: return sizeof(vv->as.longint);
+	case VAR_TYPE_DOUBLE: return sizeof(vv->as.dbl);
+	case VAR_TYPE_FLOAT: return sizeof(vv->as.flt);
 	case VAR_TYPE_VECTOR: return sizeof(vv->as.vec);
 	case VAR_TYPE_OBJECT:
 	{
@@ -101,7 +124,7 @@ vm_long_t vv_cast_long(vm_t *vm, varval_t *vv)
 	return vv->as.longint;
 }
 
-double vv_cast_double(vm_t *vm, varval_t *vv)
+VM_INLINE double vv_cast_double(vm_t *vm, varval_t *vv)
 {
 	switch (VV_TYPE(vv))
 	{
@@ -322,19 +345,19 @@ static void print_registers(vm_t *vm) {
 		vm_printf("%s => %d\n", e_vm_reg_names[i], vm_registers[i]);
 }
 
-static uint8_t VM_INLINE read_byte(vm_t *vm) {
+uint8_t VM_INLINE read_byte(vm_t *vm) {
 	uint8_t op = vm->instr[vm_registers[REG_IP]];
 	++vm_registers[REG_IP];
 	return op;
 }
 
-static int VM_INLINE read_int(vm_t *vm) {
+int VM_INLINE read_int(vm_t *vm) {
 	int i = *(int*)(vm->instr + vm_registers[REG_IP]);
 	vm_registers[REG_IP] += sizeof(int);
 	return i;
 }
 
-static float VM_INLINE read_float(vm_t *vm) {
+float VM_INLINE read_float(vm_t *vm) {
 	float f = *(float*)(vm->instr + vm_registers[REG_IP]);
 	vm_registers[REG_IP] += sizeof(float);
 	return f;
@@ -375,7 +398,7 @@ static float se_vv_to_float(varval_t *vv) {
 #endif
 
 static int se_vv_to_int(vm_t *vm, varval_t *vv) {
-	int ret = 0;
+	int ret = vv->as.ptr; //for ffi pointers got back 0, so let's just make this default atm
 	switch (VV_TYPE(vv)) {
 	case VAR_TYPE_OBJECT:
 		switch (vv->as.obj->type)
@@ -675,8 +698,23 @@ void se_addscalar(vm_t *vm, vm_scalar_t s) {
 	stack_push_vv(vm, vv);
 }
 
-void se_register_stockfunction_set(vm_t *vm, stockfunction_t *set) {
-	vm->stockfunctionsets[vm->numstockfunctionsets++] = set;
+void se_addiscalar(vm_t *vm, vm_iscalar_t s) {
+	varval_t *vv = se_vv_create(vm, VAR_TYPE_LONG);
+	vv->as.longint = s;
+	stack_push_vv(vm, vv);
+}
+
+char *vm_strdup(vm_t *vm, const char *str)
+{
+	size_t new_size = strlen(str) + 1;
+	char *new_str = vm_mem_alloc(vm, new_size);
+	snprintf(new_str, new_size, "%s", str);
+	return new_str;
+}
+
+void se_register_stockfunction_set(vm_t *vm, stockfunction_t *sf)
+{
+	vm->stockfunctionsets[vm->numstockfunctionsets++] = sf;
 }
 
 void se_register_stockmethod_set(vm_t *vm, int object_type, stockmethod_t *set) {
@@ -743,12 +781,17 @@ static vm_scalar_t stack_pop_scalar(vm_t *vm) {
 
 typedef struct
 {
-	vm_scalar_t value[16]; //4x4 matrix use this as max?
+	union
+	{
+		vm_scalar_t value[16]; //4x4 matrix use this as max?
+		vm_iscalar_t ivalue[16];
+	};
 	size_t nelements;
+	bool integral;
 } vm_vector_t;
 
-static VM_INLINE size_t vm_vector_num_elements(vm_vector_t *v) { return v->nelements; }
-static VM_INLINE vm_scalar_t vm_vector_dot(vm_vector_t *a, vm_vector_t *b) {
+VM_INLINE size_t vm_vector_num_elements(vm_vector_t *v) { return v->nelements; }
+VM_INLINE vm_scalar_t vm_vector_dot(vm_vector_t *a, vm_vector_t *b) {
 	vm_scalar_t total = 0.0;
 	int na = vm_vector_num_elements(a);
 	int nb = vm_vector_num_elements(b);
@@ -757,27 +800,32 @@ static VM_INLINE vm_scalar_t vm_vector_dot(vm_vector_t *a, vm_vector_t *b) {
 		total += (a->value[i % na] * b->value[i % nb]);
 	return total;
 }
-static VM_INLINE vm_scalar_t vm_vector_length2(vm_vector_t *v) { return vm_vector_dot(v, v); }
-static VM_INLINE vm_vector_length(vm_vector_t *v) { return sqrt(vm_vector_length2(v)); }
+VM_INLINE vm_scalar_t vm_vector_length2(vm_vector_t *v) { return vm_vector_dot(v, v); }
+VM_INLINE vm_vector_length(vm_vector_t *v) { return sqrt(vm_vector_length2(v)); }
 
 static vm_vector_t _vconst0;
 static vm_vector_t _vconst1;
 static vm_vector_t _vconst2;
 static vm_vector_t _vconst3;
 
-static bool vv_cast_vector(vm_t *vm, varval_t *vv, vm_vector_t *vec)
+VM_INLINE bool vv_cast_vector(vm_t *vm, varval_t *vv, vm_vector_t *vec)
 {
 	bool success = true;
 
 	if (VV_IS_NUMBER(vv))
 	{
 		vec->nelements = 1;
-		vec->value[0] = vv_cast_double(vm, vv);
+		vec->integral = VV_IS_INTEGRAL(vv);
+		if (vec->integral)
+			vec->ivalue[0] = vv_cast_long(vm, vv);
+		else
+			vec->value[0] = vv_cast_double(vm, vv);
 	}
 	else {
 		switch (VV_TYPE(vv))
 		{
 		case VAR_TYPE_VECTOR:
+			vec->integral = false;
 			vec->nelements = 3;
 			for (int i = 3; i--;)
 				vec->value[i] = vv->as.vec[i];
@@ -790,7 +838,7 @@ static bool vv_cast_vector(vm_t *vm, varval_t *vv, vm_vector_t *vec)
 	return success;
 }
 
-static bool stack_pop_vector(vm_t *vm, vm_vector_t *vec)
+VM_INLINE bool stack_pop_vector(vm_t *vm, vm_vector_t *vec)
 {
 	varval_t *vv = (varval_t*)stack_pop(vm);
 	bool b = vv_cast_vector(vm, vv, vec);
@@ -801,7 +849,10 @@ static bool stack_pop_vector(vm_t *vm, vm_vector_t *vec)
 void se_addnvector(vm_t *vm, const vm_vector_t *vec) {
 	switch (vec->nelements) {
 		case 1:
-			se_addscalar(vm, vec->value[0]);
+			if (vec->integral)
+				se_addiscalar(vm, vec->ivalue[0]);
+			else
+				se_addscalar(vm, vec->value[0]);
 			break;
 		case 3: {
 			varval_t * vv = se_vv_create(vm, VAR_TYPE_VECTOR);
@@ -825,25 +876,48 @@ void vm_vector_math_op(vm_t *vm, vm_vector_t *va, vm_vector_t *vb, vm_vector_t *
 	vm_scalar_t *a = (vm_scalar_t*)&va->value[0];
 	vm_scalar_t *b = (vm_scalar_t*)&vb->value[0];
 	vm_scalar_t *c = (vm_scalar_t*)&vc->value[0];
+
+	vm_iscalar_t *ia = (vm_iscalar_t*)&va->ivalue[0];
+	vm_iscalar_t *ib = (vm_iscalar_t*)&vb->ivalue[0];
+	vm_iscalar_t *ic = (vm_iscalar_t*)&vc->ivalue[0];
 	//vm_printf("na=%d,nb=%d,max=%d\n", na, nb, nm);
+
 #define MATH_VEC_OP_MACRO(x, y) \
 case x: \
 for (int i = nm; i--;) \
 c[i] = a[i % na] y b[i % nb]; \
-break; \
+break;
+#define MATH_IVEC_OP_MACRO(x, y) \
+case x: \
+for (int i = nm; i--;) \
+ic[i] = ia[i % na] y ib[i % nb]; \
+break;
 	
-	switch (op)
+	if (va->integral && vb->integral)
 	{
-MATH_VEC_OP_MACRO(OP_SUB, -)
-MATH_VEC_OP_MACRO(OP_ADD, +)
-MATH_VEC_OP_MACRO(OP_DIV, /)
-MATH_VEC_OP_MACRO(OP_MUL, *)
+		switch (op)
+		{
+				MATH_IVEC_OP_MACRO(OP_SUB, -)
+				MATH_IVEC_OP_MACRO(OP_ADD, +)
+				MATH_IVEC_OP_MACRO(OP_DIV, / )
+				MATH_IVEC_OP_MACRO(OP_MUL, *)
+		}
+		vc->integral = true;
 	}
-
+	else {
+		switch (op)
+		{
+				MATH_VEC_OP_MACRO(OP_SUB, -)
+				MATH_VEC_OP_MACRO(OP_ADD, +)
+				MATH_VEC_OP_MACRO(OP_DIV, / )
+				MATH_VEC_OP_MACRO(OP_MUL, *)
+		}
+		vc->integral = false;
+	}
 	vc->nelements = nm;
 }
 
-static float stack_pop_float(vm_t *vm) {
+VM_INLINE float stack_pop_float(vm_t *vm) {
 	varval_t *vv = (varval_t*)stack_pop(vm);
 	float f = (float)vv_cast_double(vm, vv);
 	se_vv_free(vm, vv);
@@ -1022,7 +1096,7 @@ static VM_INLINE int vm_jit(vm_t *vm, int instr, unsigned char *asm)
 //we're using a default primitive types use copy instead of reference so any time that stack_pop is used, free the value (try to when the refs are <= 0)
 //use se_vv_free(vm, vv);
 
-static VM_INLINE int vm_execute(vm_t *vm, int instr) {
+int vm_execute(vm_t *vm, int instr) {
 #if 0
 	if (instr < OP_END_OF_LIST) {
 		vm_printf("%s\n", e_opcodes_strings[instr]);
@@ -1152,13 +1226,28 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 			else if (VV_TYPE(vv_arr) == VAR_TYPE_OBJECT) {
 				switch (vv_arr->as.obj->type)
 				{
-				case VT_OBJECT_BUFFER:
-				{
-					int ind_as_int = vv_cast_long(vm, vv_index);
-					vt_buffer_t *vtb = (vt_buffer_t*)vv_arr->as.obj->obj;
-					vtb->data[ind_as_int % vtb->size] = vv_cast_long(vm, vv) & 0xff;
-				} break;
-				default: goto just_normal_obj;
+					case VT_OBJECT_BUFFER:
+					{
+						int ind_as_int = vv_cast_long(vm, vv_index);
+						vt_buffer_t *vtb = (vt_buffer_t*)vv_arr->as.obj->obj;
+						vtb->data[ind_as_int % vtb->size] = vv_cast_long(vm, vv) & 0xff;
+					} break;
+					default:
+					{
+						//if (VV_IS_STRING(vv_index)) //for this case, just convert them into a string type even if they're indexes/numbers or so
+						{
+							const char *si = se_vv_to_string(vm, vv_index);
+							vt_istring_t *istr = se_istring_find(vm, si);
+							if(istr==NULL)
+								istr = se_istring_create(vm, si);
+							stack_push_vv(vm, vv_arr);
+							stack_push_vv(vm, vv);
+							stack_push(vm, istr->index);
+							//push these back up
+							se_vv_free(vm, vv_index);
+							return vm_execute(vm, OP_STORE_FIELD_VM);
+						}
+					} break;
 				}
 			}
 			else {
@@ -1176,37 +1265,21 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 		} break;
 
 		case OP_GET_SELF: {
-			stack_push_vv(vm, vm->self);
+			if (!vm->thrunner)
+				stack_push(vm, 0);
+			else
+				stack_push_vv(vm, vm->thrunner->self);
 		} break;
 
 		case OP_GET_LENGTH: {
 			varval_t *vv_arr = (varval_t*)stack_pop(vm);
+			int len = se_vv_container_size(vm, vv_arr);
+			if (len == -1)
 			{
-				switch (VV_TYPE(vv_arr))
-				{
-				case VAR_TYPE_OBJECT:
-				{
-					switch (vv_arr->as.obj->type)
-					{
-					case VT_OBJECT_BUFFER: {
-						vt_buffer_t *vtb = (vt_buffer_t*)vv_arr->as.obj->obj;// DYN_TYPE_HDR(vt_buffer_t, ((char*)vv_arr->as.obj->obj));
-						se_addint(vm, vtb->size);
-					} break;
-					}
-				} break;
-				case VAR_TYPE_ARRAY:
-					se_addint(vm, vector_count(&vv_arr->as.obj->fields));//se_addint(vm, vv_arr->obj->numfields);
-					break;
-				case VAR_TYPE_STRING:
-				case VAR_TYPE_INDEXED_STRING:
-					se_addint(vm, strlen(se_vv_to_string(vm, vv_arr)));
-					break;
-				default:
-					vm_printf("'%s' is not an array, cannot get length!\n", e_var_types_strings[VV_TYPE(vv_arr)]);
-					se_addnull(vm);
-					break;
-				}
+				vm_printf("'%s' is not an container type, cannot get length!\n", e_var_types_strings[VV_TYPE(vv_arr)]);
+				se_addnull(vm);
 			}
+			se_addint(vm, len);
 			se_vv_free(vm, vv_arr);
 #if 0
 			vm_printf("refs = %d\n", vv_arr->refs);
@@ -1238,7 +1311,26 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 					vt_buffer_t *vtb = (vt_buffer_t*)arr->as.obj->obj;
 					se_addchar(vm, vtb->data[ind_as_int%vtb->size]);
 				} break;
-				default: goto just_normal_objload;
+				//default: goto just_normal_objload;
+				default:
+				{
+					//if (VV_TYPE(arr_index) == VAR_TYPE_STRING) //even if it's not a string just make it a string and check if the key exists
+					{
+						const char *si = se_vv_to_string(vm, arr_index);
+						vt_istring_t *istr = se_istring_find(vm, si);
+						if (istr != NULL)
+						{
+							stack_push_vv(vm, arr);
+							stack_push(vm, istr->index);
+							//push these back up
+							se_vv_free(vm, arr_index);
+							return vm_execute(vm, OP_LOAD_FIELD_VM);
+						}
+						else goto just_normal_objload;
+					}
+					//else
+						//goto just_normal_objload;
+				}
 				}
 			}
 			else if (VV_TYPE(arr) == VAR_TYPE_ARRAY) {
@@ -1338,6 +1430,56 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 #endif
 		} break;
 
+		case OP_STORE_FIELD_VM: {
+			int str_index = stack_pop(vm);
+			varval_t *vv = (varval_t*)stack_pop(vm);
+			varval_t *vv_obj = (varval_t*)stack_pop(vm);
+
+			if (VV_TYPE(vv_obj) == VAR_TYPE_OBJECT)
+			{
+				if (str_index >= vm->istringlistsize)
+				{
+					vm_printf("str_index out of bounds!!\n");
+				}
+				else {
+					if (vv_obj->as.obj->type == VT_OBJECT_BUFFER)
+					{
+						vt_buffer_t *vtb = (vt_buffer_t*)vv_obj->as.obj->obj;// DYN_TYPE_HDR(vt_buffer_t, (char*)vv_obj->as.obj->obj);
+						cstruct_t *cs = vm_get_struct(vm, vtb->type);
+						if (cs)
+						{
+							const char *str = vm->istringlist[str_index].string;
+							cstructfield_t *field = vm_get_struct_field(vm, cs, str);
+							if (field)
+							{
+								//vm_printf("trying to set ptr on struct %s (%s-> type = %s, sz %d, off %d)\n", cs->name, field->name, ctypestrings[field->type], field->size, field->offset);
+								vm_set_struct_field_value(vm, cs, field, vtb, vv);
+							}
+							else
+								vm_printf("field not found for struct %d!\n", cs->name);
+						}
+						else
+							vm_printf("cs is NULL! %d\n", vtb->type);
+					}
+					else {
+						//const char *str = vm->istringlist[str_index].string; //just here for debug purpose
+						se_vv_set_field(vm, vv_obj, str_index, vv);
+					}
+				}
+			}
+			else if (VV_TYPE(vv_obj) == VAR_TYPE_ARRAY) {
+				se_vv_set_field(vm, vv_obj, str_index, vv);
+			}
+			se_vv_free(vm, vv);
+			se_vv_free(vm, vv_obj);
+#if 0
+			if (!strcmp(vm->istringlist[str_index].string, "players")) {//storing [] players
+				vv->flags |= VAR_FLAG_LEVEL_PLAYER;
+				vm_printf("refs = %d, str = %s\n", vv->refs, vm->istringlist[str_index].string);
+			}
+#endif
+		} break;
+
 		case OP_LOAD_FIELD: {
 
 			int str_index = read_short(vm);
@@ -1391,6 +1533,65 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 					}
 					else
 						se_addnull(vm);
+			}
+			//yep also need to free this e.g what if the compiler allowed new Object().objfield;
+			se_vv_free(vm, vv_obj);
+		} break;
+
+		//copy of above, just for internal use atm
+		case OP_LOAD_FIELD_VM: {
+
+			int str_index = stack_pop(vm);
+			varval_t *vv_obj = (varval_t*)stack_pop(vm);
+
+			if (str_index >= vm->istringlistsize)
+				vm_printf("str_index out of bounds!!\n");
+			if (VV_TYPE(vv_obj) == VAR_TYPE_OBJECT && vv_obj->as.obj->type == VT_OBJECT_BUFFER)
+			{
+				vt_buffer_t *vtb = (vt_buffer_t*)vv_obj->as.obj->obj;// DYN_TYPE_HDR(vt_buffer_t, (char*)vv_obj->as.obj->obj);
+				cstruct_t *cs = vm_get_struct(vm, vtb->type);
+				if (cs)
+				{
+					const char *str = vm->istringlist[str_index].string;
+					cstructfield_t *field = vm_get_struct_field(vm, cs, str);
+					if (field)
+					{
+						varval_t *vv = vm_get_struct_field_value(vm, cs, field, vtb); //will always be a copy because no references it doesn't exist it needs to be made
+						stack_push_vv(vm, vv);
+					}
+					else
+						vm_printf("field not found for struct %d!\n", cs->name);
+				}
+				else
+					vm_printf("cs is NULL! %d\n", vtb->type);
+			}
+			else {
+				const char *str = vm->istringlist[str_index].string;
+				//vm_printf("LOAD_FIELD{%s}\n", vm->istringlist[str_index].string);
+				if (VV_TYPE(vv_obj) == VAR_TYPE_OBJECT)
+				{
+					//se_vv_get_field also uses stack_pop but that is up to the compiler to provide with expressions that dont store to add a OP_POP
+					varval_t *vv = se_vv_get_field(vm, vv_obj, str_index);
+					if (NULL == vv)
+						se_addnull(vm);
+					else {
+						varval_t *copy = vv;
+						if (!VV_USE_REF(vv))
+							copy = se_vv_copy(vm, vv);
+						stack_push_vv(vm, copy);
+					}
+				}
+				else if (VV_TYPE(vv_obj) == VAR_TYPE_VECTOR) {
+					if (*str == 'x' || *str == 'y' || *str == 'z') {
+						se_addfloat(vm, vv_obj->as.vec[*str - 'x']);
+					}
+					else {
+						vm_printf("cannot get {%s} of vector!\n", str);
+						se_addnull(vm);
+					}
+				}
+				else
+					se_addnull(vm);
 			}
 			//yep also need to free this e.g what if the compiler allowed new Object().objfield;
 			se_vv_free(vm, vv_obj);
@@ -1666,13 +1867,20 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 			varval_t *ptr = (varval_t*)stack_pop(vm);
 			if (!VV_IS_POINTER(ptr))
 			{
-				vm_printf("not a pointer!\n");
-				return E_VM_RET_ERROR;
+				//vm_printf("not a pointer!\n");
+				//return E_VM_RET_ERROR;
+				//UNSAFE!!
+				//just do a normal c pointer dereference
+				varval_t *nv = se_vv_create(vm, VAR_TYPE_LONG); //should be VAR_TYPE_C_POINTER
+				vm_long_t longval = vv_cast_long(vm, ptr);
+				nv->as.intptr = *(intptr_t*)longval;
+				stack_push_vv(vm, nv);
 			}
-
-			varval_t *vv = (varval_t*)ptr->as.ptr;
-
-			stack_push_vv(vm, vv);
+			else
+			{
+				varval_t *vv = (varval_t*)ptr->as.ptr;
+				stack_push_vv(vm, vv);
+			}
 #if 0
 			varval_t *nv = se_vv_create(vm, VV_TYPE(ptr));
 			nv->flags |= VF_POINTER;
@@ -1722,10 +1930,11 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 #endif
 		} break;
 		case OP_ADD: {
-			varval_t *b = (varval_t*)stack_pop(vm);
-			varval_t *a = (varval_t*)stack_pop(vm);
-			if (VV_IS_NUMBER(a) && VV_IS_NUMBER(b))
+			vm_vector_t vec, vec2, result;
+			if (VV_IS_NUMBER(stack_current()) && VV_IS_NUMBER(stack_get(vm,1)))
 			{
+				unhandled:
+#if 0
 				int ib;
 				int ia;
 
@@ -1742,8 +1951,18 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 					fa += fb;
 					se_addfloat(vm, fa);
 				}
+#endif
+				if (!stack_pop_vector(vm, &vec2))
+					return E_VM_RET_ERROR;
+				if (!stack_pop_vector(vm, &vec))
+					return E_VM_RET_ERROR;
+				//vm_vector_sub(&vec, 1.f);
+				vm_vector_math_op(vm, &vec, &vec2, &result, instr);
+				se_addnvector(vm, &result);
 			}
 			else {
+				varval_t *b = (varval_t*)stack_pop(vm);
+				varval_t *a = (varval_t*)stack_pop(vm);
 				if (
 					(VV_TYPE(b) == VAR_TYPE_STRING || VV_TYPE(a) == VAR_TYPE_STRING)
 					||
@@ -1790,9 +2009,9 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 				{
 					goto unhandled;
 				}
+				se_vv_free(vm, a);
+				se_vv_free(vm, b);
 			}
-			se_vv_free(vm, a);
-			se_vv_free(vm, b);
 		} break;
 #if 0
 		case OP_DIV: {
@@ -1821,6 +2040,53 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 			vm_registers[REG_IP] = jmp_loc;
 		} break;
 
+		case OP_CALL_BUILTIN_METHOD: {
+
+			int method_name_idx = read_int(vm);
+			if (method_name_idx >= vm->istringlistsize)
+			{
+				vm_printf("internal method name error!\n");
+				return E_VM_RET_ERROR;
+			}
+
+			varval_t *self = (varval_t*)stack_pop(vm);
+
+			//vm_printf("func_name_idx=%d\n", func_name_idx);
+			const char *method_name = vm->istringlist[method_name_idx].string;
+
+			stockmethod_t *sm = se_find_method_by_name(vm, self->as.obj->type, method_name);
+
+			if (method_name == NULL || sm == NULL) {
+				vm_printf("built-in method '%s' does not exist! (%d)\n", method_name, method_name_idx);
+				return E_VM_RET_ERROR;
+			}
+			int numargs = read_int(vm);
+			vm->thrunner->numargs = numargs;
+			int prev_bp = vm_registers[REG_BP];
+
+			vm_registers[REG_BP] = vm_registers[REG_SP] - numargs + 1;
+
+			//do the calling here
+			varval_t *retval = NULL;
+			if (sm->call(vm, self) != 0)
+			{
+				retval = (varval_t*)stack_pop(vm);
+			}
+			else {
+				retval = NULL;
+			}
+
+			for (int i = numargs; i--;) {
+				varval_t *vv = (varval_t*)stack_pop(vm); //pop all local vars?
+				//--vv->refs;
+				se_vv_free(vm, vv);
+			}
+
+			vm_registers[REG_BP] = prev_bp;
+			stack_push_vv(vm, retval);
+			se_vv_free(vm, self);
+		} break;
+#if 0
 		case OP_CALL_BUILTIN_METHOD: {
 			int method_name_idx = read_int(vm);
 			if (method_name_idx >= vm->istringlistsize)
@@ -1880,6 +2146,7 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 
 			stack_push_vv(vm, retval);
 		} break;
+#endif
 
 		case OP_CALL_BUILTIN: {
 
@@ -1962,6 +2229,114 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 			stack_push_vv(vm, retval);
 		} break;
 
+		case OP_CALL_METHOD_THREAD: {
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
+#define START_PERF(x)
+#define END_PERF(x)
+			//#define START_PERF(x) unsigned long long x = GetTickCount64();
+			//#define END_PERF(x) vm_printf("END_PERF %llu for block %s (%d, %s)\n", GetTickCount64() - x, TOSTRING(x), __LINE__, __FILE__);
+			START_PERF(start)
+
+			int jmp_loc = stack_pop_int(vm);
+			int numargs = stack_pop_int(vm);
+			varval_t *new_self = stack_pop_vv(vm);
+			if (VV_USE_REF(new_self))
+				new_self->refs++;
+
+			START_PERF(args);
+
+			for (int i = numargs; i--;) {
+				varval_t *vv = (varval_t*)stack_pop(vm);
+				if (VV_USE_REF(vv))
+					vv->refs++;
+				vm->tmpstack[i] = (intptr_t)vv;
+			}
+			END_PERF(args);
+
+			/* create new thread */
+
+			START_PERF(find_thread);
+			vm_thread_t *thr = NULL;
+			for (int i = MAX_SCRIPT_THREADS; i--;) {
+				if (!vm->threadrunners[i].active) {
+					thr = &vm->threadrunners[i];
+					break;
+				}
+
+			}
+			END_PERF(find_thread);
+
+			if (thr == NULL) {
+				vm_printf("MAX SCRIPT THREADS\n");
+				return E_VM_RET_ERROR;
+			}
+			else {
+				//vm_printf("num threads = %d\n", vm->numthreadrunners);
+			}
+			++vm->numthreadrunners;
+			//don't clear the stack/and stacksize
+			memset(&thr->registers, 0, sizeof(thr->registers));
+			//prob just bottleneck anyway \/
+			//memset(thr->stack,0,thr->stacksize * sizeof(intptr_t)); //stack full empty ayy
+			thr->wait = 0;
+			thr->numargs = 0;
+			thr->active = true;
+			thr->instr = vm->instr;
+
+			//add new thread to list of threads for next frame if wait occurs etc
+
+			vm_thread_t *saverunner = vm->thrunner; //save current runner
+
+			vm->thrunner = thr;
+
+			//do all the call mimic stuff and sadly has to be same ish as normal call cuz the RET expects this and cba to change it
+
+			int curpos = vm_registers[REG_IP];
+			stack_push(vm, curpos);
+			//vm_printf("call jmp to %d, returning to %d\n", jmp_loc, curpos);
+
+			stack_push(vm, vm_registers[REG_BP]); //save the previous stack frame bp
+			vm_registers[REG_BP] = vm_registers[REG_SP] + 1;
+
+			memset(&vm_stack[vm_registers[REG_BP]], 0, sizeof(intptr_t) * MAX_LOCAL_VARS);
+
+			for (int i = numargs; i--;)
+				stack_push(vm, vm->tmpstack[numargs - i - 1]);
+
+			//alloc minimum of MAX_LOCAL_VARS values on stack for locals?
+			vm_registers[REG_SP] += MAX_LOCAL_VARS - numargs;
+			stack_push(vm, numargs);
+			stack_push(vm, NULL); //self is NULL in this case
+			vm->thrunner->self = new_self;
+
+			vm_registers[REG_IP] = jmp_loc;
+			/* end of normal call stuff */
+
+			START_PERF(run_thread);
+			while (vm->is_running && vm_registers[REG_IP] != 0) {
+				int thr_instr = vm->instr[vm_registers[REG_IP]++];
+
+				int vm_ret = vm_execute(vm, thr_instr);
+				if (vm_ret == E_VM_RET_ERROR)
+					return vm_ret;
+				else if (vm_ret == E_VM_RET_WAIT) {
+					break;
+				}
+			}
+			END_PERF(run_thread);
+
+			if (!vm_thread_is_stalled(vm, thr)) {
+				vm_execute(vm, OP_POP); //retval
+				thr->active = false;
+				--vm->numthreadrunners;
+				vm_thread_reset_events(vm, thr); //should kind of already have no events, otherwise we wouldn't end up here mhm?
+			}
+
+			END_PERF(start)
+
+			vm->thrunner = saverunner; //restore prev thread
+		} break;
 
 		case OP_CALL_THREAD: {
 #define STRINGIFY(x) #x
@@ -2038,6 +2413,14 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 			//alloc minimum of MAX_LOCAL_VARS values on stack for locals?
 			vm_registers[REG_SP] += MAX_LOCAL_VARS - numargs;
 			stack_push(vm, numargs);
+			if (saverunner) //when calling main from _init or something thrunner may not exist yet
+			{
+				if (VV_USE_REF(saverunner->self))
+					saverunner->self->refs++;
+				stack_push(vm, saverunner->self);
+			}
+			else
+				stack_push(vm, NULL); //self is NULL in this case
 
 			vm_registers[REG_IP] = jmp_loc;
 			/* end of normal call stuff */
@@ -2217,11 +2600,13 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 		} break;
 
 		case OP_CALL_METHOD: {
-#if 0
+			varval_t *self = (varval_t*)stack_pop(vm);
+			if (VV_USE_REF(self))
+				self->refs++;
+
 			int jmp_loc = read_int(vm);
 			int numargs = read_int(vm);
 
-			varval_t *self = (varval_t*)stack_get(vm, numargs);
 			for (int i = numargs; i--;) {
 				varval_t *vv = (varval_t*)stack_pop(vm);
 				if (VV_USE_REF(vv))
@@ -2244,10 +2629,10 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 			//alloc minimum of MAX_LOCAL_VARS values on stack for locals?
 			vm_registers[REG_SP] += MAX_LOCAL_VARS - numargs;
 			stack_push(vm, numargs);
-
+			//as of now there should always be a threadrunner anyways so
+			stack_push(vm, vm->thrunner->self); //push previous self so we can restore it
+			vm->thrunner->self = self; //set new self to the threadrunner so we can access it easily
 			vm_registers[REG_IP] = jmp_loc;
-#endif
-			/* TODO IMPLEMENT */
 		} break;
 
 		case OP_CALL: {
@@ -2276,12 +2661,26 @@ static VM_INLINE int vm_execute(vm_t *vm, int instr) {
 			//alloc minimum of MAX_LOCAL_VARS values on stack for locals?
 			vm_registers[REG_SP] += MAX_LOCAL_VARS - numargs;
 			stack_push(vm, numargs);
+			if (vm->thrunner) //when calling main from _init or something thrunner may not exist yet
+			{
+				if (VV_USE_REF(vm->thrunner->self))
+					vm->thrunner->self->refs++;
+				stack_push(vm, vm->thrunner->self);
+			}
+			else
+				stack_push(vm, NULL); //self is NULL in this case
 
 			vm_registers[REG_IP] = jmp_loc;
 		} break;
 
 		case OP_RET: {
 			varval_t *retval = stack_pop_vv(vm);
+			varval_t *oldself = stack_pop_vv(vm);
+			if (vm->thrunner)
+			{
+				se_vv_remove_reference(vm, vm->thrunner->self);
+				vm->thrunner->self = oldself;
+			}
 			int numargs = stack_pop(vm);
 
 			for (int i = MAX_LOCAL_VARS; i--;) {
@@ -2476,7 +2875,7 @@ int vm_run_active_threads(vm_t *vm, int frametime) {
 	return E_VM_RET_NONE;
 }
 
-int vm_exec_thread_pointer(vm_t *vm, int fp, int numargs) {
+VM_INLINE int vm_exec_thread_pointer(vm_t *vm, int fp, int numargs) {
 	vm->thrunner = NULL;
 
 	se_addint(vm, numargs);
@@ -2486,13 +2885,10 @@ int vm_exec_thread_pointer(vm_t *vm, int fp, int numargs) {
 
 int vm_exec_ent_thread_pointer(vm_t *vm, varval_t *new_self, int fp, int numargs) {
 	vm->thrunner = NULL;
-	varval_t *saveself = vm->self;
-	vm->self = new_self;
+	se_addobject(vm, new_self);
 	se_addint(vm, numargs);
 	se_addint(vm, fp);
-	int ret = vm_execute(vm, OP_CALL_THREAD);
-	vm->self = saveself;
-	return ret;
+	return vm_execute(vm, OP_CALL_METHOD_THREAD);
 }
 
 int vm_notify(vm_t *vm, varval_t *object, int stringindex, size_t numargs)
@@ -2851,6 +3247,20 @@ int vm_add_program(vm_t *vm, unsigned char *buffer, size_t sz, const char *tag)
 	return 0;
 }
 
+int se_error(vm_t *vm, const char *errstr, ...)
+{
+	char dest[1024 * 16];
+	va_list argptr;
+	if (errstr != NULL) {
+		va_start(argptr, errstr);
+		vsprintf(dest, errstr, argptr);
+		va_end(argptr);
+		vm_printf("%s\n", dest);
+	}
+	vm_error(vm, E_VM_ERR_ERROR, "%s", dest);
+	return 0;
+}
+
 vm_t *vm_create() {
 	vm_t *vm = NULL;
 	vm = (vm_t*)malloc(sizeof(vm_t));
@@ -2870,13 +3280,30 @@ vm_t *vm_create() {
 	_vconst1.nelements = 1;
 	_vconst2.nelements = 1;
 	_vconst3.nelements = 1;
+	_vconst0.integral = false;
+	_vconst1.integral = false;
+	_vconst2.integral = false;
+	_vconst3.integral = false;
 
 	memset(vm, 0, sizeof(vm_t));
 	vm->m_printf_hook = printf;
 
 	//clear the var cache
-	memset(&vm->varcache, 0, sizeof(vm->varcache));
-	vm->varcachesize = 0;
+	//memset(&vm->varcache, 0, sizeof(vm->varcache));
+	//vm->varcachesize = 0;
+	//vector_init(&vm->varcachearray);
+	stk_init(&vm->varcacheavail);
+	vm->varcacheindex = 0;
+	vm->varcachemax = MAX_CACHED_VARIABLES;
+	//initial empty variables allocation
+	for (size_t i = 0; i < vm->varcachemax; ++i)
+	{
+		varval_t *vv = (varval_t*)vm_mem_alloc(vm, sizeof(varval_t));
+		memset(vv, 0, sizeof(varval_t));
+		//vector_add(&vm->varcachearray, vv);
+		stk_push(&vm->varcacheavail, vv);
+		//printf("stk cap:%d,sz:%d\n", vm->varcacheavail.capacity, vm->varcacheavail.size);
+	}
 
 	array_init(&vm->structs, cstruct_t);
 	array_init(&vm->libs, vm_ffi_lib_t);
@@ -2884,13 +3311,13 @@ vm_t *vm_create() {
 	vector_init(&vm->ffi_callbacks);
 
 	vector_init(&vm->__mem_allocations);
-	vector_init(&vm->vars);
+	//vector_init(&vm->vars);
 
 	vector_init(&vm->functioninfo);
 
 	vm->level = se_createobject(vm, VT_OBJECT_LEVEL, NULL, NULL, NULL);
 	vm->level->refs = 1337; //will only free after vm frees yup
-	vm->self = NULL;
+	//vm->self = NULL;
 
 	//vm->program = (char*)vm_mem_alloc(vm, programsize);
 	//memcpy(vm->program, (void*)&program[0], programsize);
@@ -3053,7 +3480,7 @@ void vm_free(vm_t *vm) {
 		return;
 	vm->thrunner = NULL;
 
-	int num_vars_left = vector_count(&vm->vars);
+	//int num_vars_left = vector_count(&vm->vars);
 	//vm_printf("num vars left =%d\n", num_vars_left);
 
 	for (int evi = vm->events.size; evi--;)
@@ -3135,7 +3562,7 @@ void vm_free(vm_t *vm) {
 
 	//not sure about this, after long time not working on this forgot really what i intended, but i think this should be ok ish
 	//try normally
-
+#if 0
 	while (vector_count(&vm->vars) > 0)
 	{
 		for (int i = 0; i < vector_count(&vm->vars); i++) {
@@ -3157,6 +3584,7 @@ void vm_free(vm_t *vm) {
 		}
 		//vm_printf("vec count = %d\n", vector_count(&vm->vars));
 	}
+#endif
 #if 0
 	for (int i = vector_count(&vm->vars) - 1; i > -1; i--) {
 		varval_t *vv = (varval_t*)vector_get(&vm->vars, i);
@@ -3177,7 +3605,28 @@ void vm_free(vm_t *vm) {
 		vm_mem_free(vm, cb);
 	}
 	vector_free(&vm->ffi_callbacks);
-	vector_free(&vm->vars);
+	//vector_free(&vm->vars);
+
+	//free all the variables
+#if 0
+	for (size_t i = 0; i < vm->varcachemax; ++i)
+	{
+		varval_t *vv = (varval_t*)vector_get(&vm->varcachearray, i);
+		vm_mem_free(vm, vv);
+	}
+#endif
+
+	//printf("stk cap:%d,sz:%d\n", vm->varcacheavail.capacity, vm->varcacheavail.size);
+
+	while(vm->varcacheavail.size > 0)
+	{
+		varval_t *vv = (varval_t*)stk_pop(&vm->varcacheavail);
+		//printf("stk cap:%d,sz:%d\n", vm->varcacheavail.capacity, vm->varcacheavail.size);
+		vm_mem_free(vm, vv);
+	}
+
+	stk_free(&vm->varcacheavail);
+	//vector_free(&vm->varcachearray);
 
 	for (int i = 0; i < MAX_SCRIPT_THREADS; i++) {
 		if (vm->threadrunners[i].stack != NULL)
@@ -3232,6 +3681,7 @@ void vm_free(vm_t *vm) {
 		vm_mem_free(vm, prog->data);
 	}
 	array_free(&vm->programs);
+
 	free(vm);
 }
 

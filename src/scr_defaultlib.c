@@ -2,6 +2,8 @@
 #include "common.h"
 #include "asm.h"
 #include <ctype.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #ifdef _WIN32
 #include <winsock2.h>
 #include <wsipx.h>
@@ -20,6 +22,7 @@
 #include <sys/mman.h>
 #endif
 #include "parser.h"
+#include "dynstring.h"
 //#pragma comment(lib, "SDL2.lib")
 #ifdef _WIN32
 static bool wsa_init = false;
@@ -194,6 +197,12 @@ int sf_typeof(vm_t *vm) {
 	return 1;
 }
 
+int sf_cstring(vm_t *vm) {
+	intptr_t ptr = se_getint(vm, 0);
+	se_addstring(vm, (const char*)ptr);
+	return 1;
+}
+
 int sf_sizeof(vm_t *vm) {
 
 	int vv_integer_internal_size(varval_t *vv);
@@ -247,6 +256,28 @@ ADD_CSTD_MATH_LIB_FUNC(cosf)
 int sf_spawnstruct(vm_t *vm) {
 	varval_t *vv = se_vv_create(vm, VAR_TYPE_OBJECT);
 	stack_push_vv(vm, vv);
+	return 1;
+}
+
+static int _get_obj_vars_cb(vm_t *vm, const char *field_name, vt_object_field_t *field, void *userdata, vm_flags_t flags)
+{
+	VV_CAST_VAR(arr, userdata);
+	se_addstring(vm, field_name);
+	VV_CAST_VAR(av, stack_pop(vm));
+	se_vv_set_field(vm, arr, se_vv_container_size(vm,arr), av);
+	return 0;
+}
+
+int sf_get_object_vars(vm_t *vm)
+{
+	varval_t *vv = se_argv(vm, 0);
+	if (VV_TYPE(vv) != VAR_TYPE_OBJECT)
+		return se_error(vm, "not an object");
+
+	varval_t *arr = se_createarray(vm);
+	vt_object_t *obj = vv->as.obj;
+	se_vv_enumerate_fields(vm, vv, _get_obj_vars_cb, arr);
+	stack_push_vv(vm, arr);
 	return 1;
 }
 
@@ -313,6 +344,55 @@ int sf_substr(vm_t *vm) {
 	else
 		se_addstring(vm, &copy[sub]);
 	free(copy);
+	return 1;
+}
+
+static int _glue_array_fields(vm_t *vm, const char *field_name, vt_object_field_t *field, void **userdata, vm_flags_t flags)
+{
+	dynstring* s = (dynstring*)userdata[0];
+	const char *glue = (const char*)userdata[1];
+	const char *value_as_string = se_vv_to_string(vm, field->value);
+	dynadd(s, value_as_string);
+	if(!flags) //if not last element then add glue
+	dynadd(s, glue);
+	return 0;
+}
+
+int sf_implode(vm_t *vm)
+{
+	const char *glue = se_getstring(vm, 0);
+	VV_CAST_VAR(arr, se_argv(vm, 1));
+
+	if (VV_TYPE(arr) != VAR_TYPE_ARRAY)
+		return se_error(vm, "not an array");
+	dynstring s = dynalloc(32);
+	void *ud[2] = {
+		(void*)&s,
+		(void*)glue
+	};
+	se_vv_enumerate_fields(vm, arr, _glue_array_fields, ud);
+	se_addstring(vm, s);
+	dynfree(&s);
+	return 1;
+}
+
+int sf_explode(vm_t *vm) {
+	const char *str = se_getstring(vm, 1);
+	const char *delim = se_getstring(vm, 0);
+	varval_t *arr = se_createarray(vm);
+
+	char *copy = (char*)malloc(strlen(str) + 1);
+	snprintf(copy, strlen(str) + 1, "%s", str);
+	char *tok = strtok(copy, delim);
+	int i = 0;
+	while (tok != NULL) {
+		se_addstring(vm, tok);
+		varval_t *av = (varval_t*)stack_pop(vm);
+		se_vv_set_field(vm, arr, i++, av);
+		tok = strtok(NULL, delim);
+	}
+	free(copy);
+	stack_push_vv(vm, arr);
 	return 1;
 }
 
@@ -969,7 +1049,7 @@ int sf_exit(vm_t *vm)
 	return 0;
 }
 
-#ifdef CIDSCROPT_STANDALONE
+#ifdef GSC_STANDALONE
 extern unsigned int fps_delta;
 int sf_set_fps(vm_t *vm)
 {
@@ -1030,7 +1110,34 @@ int sf_eval(vm_t *vm)
 
 int sm_test(vm_t *vm, varval_t *self)
 {
+	printf("sm_test\n");
 	se_addint(vm, 123);
+	return 1;
+}
+
+int sf_is_file(vm_t *vm)
+{
+	const char *path = se_getstring(vm, 0);
+	struct stat s;
+	if (stat(path, &s) != 0)
+	{
+		se_addbool(vm, false);
+		return 1;
+	}
+	se_addbool(vm, (s.st_mode & S_IFREG) == S_IFREG);
+	return 1;
+}
+
+int sf_is_dir(vm_t *vm)
+{
+	const char *path = se_getstring(vm, 0);
+	struct stat s;
+	if (stat(path, &s) != 0)
+	{
+		se_addbool(vm, false);
+		return 1;
+	}
+	se_addbool(vm, (s.st_mode & S_IFDIR) == S_IFDIR);
 	return 1;
 }
 
@@ -1043,7 +1150,7 @@ stockfunction_t std_scriptfunctions[] = {
 #ifdef _WIN32
 	{"set_pixel", sf_setpixel},
 #endif
-#ifdef CIDSCROPT_STANDALONE
+#ifdef GSC_STANDALONE
 	{"__internal_thread_set_sleep_time", sf_set_fps},
 	//{"__internal_thread_run", sf_thread_run}, //don't use this
 #endif
@@ -1052,6 +1159,8 @@ stockfunction_t std_scriptfunctions[] = {
 	//{"cosf",sf_m_cosf},
 	//{"eval", sf_eval},
 	//{"exit", sf_exit},
+	{"is_dir", sf_is_dir},
+	{"is_file", sf_is_dir},
 	{ "buffer", sf_buffer },
 	//{ "set_ffi_lib", sf_set_ffi_lib },
 	{ "int",sf_int },
@@ -1073,22 +1182,27 @@ stockfunction_t std_scriptfunctions[] = {
 	//{ "tolower", sf_tolower },
 	//{ "toupper", sf_toupper },
 	{ "strtok", sf_strtok },
+	{ "implode", sf_implode },
+	{ "explode", sf_explode },
 	//{"isdigit", sf_isdigit},
 	//{"isalnum", sf_isalnum},
 	//{"islower", sf_islower},
 	//{"isupper", sf_isupper},
 	//{"isalpha", sf_isalpha},
 	{ "substr", sf_substr },
+	{"get_object_vars",sf_get_object_vars},
+	{"getarraykeys",sf_get_object_vars}, //alternate naming
 	{ "get_in_string", sf_get_in_string },
 	{ "printf", sf_printf },
 	{ "sprintf", sf_sprintf },
-	//{ "getchar", sf_getchar },
+	{ "getchar", sf_getchar },
 	{"isdefined", sf_isdefined},
 	{ "get_time", sf_get_time },
 	{ "randomint", sf_randomint },
 	{"randomfloat", sf_randomfloat},
 	{"spawnstruct", sf_spawnstruct},
 	{ "typeof",sf_typeof },
+	{"cstring",sf_cstring},
 	{"sizeof",sf_sizeof},
 	{NULL,NULL},
 };

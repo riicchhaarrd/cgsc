@@ -1,3 +1,4 @@
+#!/usr/bin/env gsc
 fibR(n)
 {
 	if(n < 2) {

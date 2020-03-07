@@ -1,11 +1,13 @@
 #pragma once
-#include "include/cidscropt.h"
+#include "include/gsc.h"
 
 #include "stdheader.h"
 
 #define MAX_VARIABLES 1024
 #define MAX_LOCAL_VARS (32)
 
+#define VV_CAST(x) ((varval_t*)x)
+#define VV_CAST_VAR(x,y) varval_t* x = VV_CAST(y)
 #define VV_INTEGER uintptr_t
 #define VV_USE_REF(x) (x != NULL && (x->type==VAR_TYPE_OBJECT || x->type==VAR_TYPE_ARRAY))
 #define VV_IS_STRING(x) ((x)&&(x->type==VAR_TYPE_STRING||x->type==VAR_TYPE_INDEXED_STRING))
@@ -14,7 +16,7 @@
 //#define VV_TYPE_STRING(x) (e_var_types_strings[VV_TYPE(x)])
 #define VV_TYPE_STRING(x) vv_get_type_string(x)
 //#define VV_IS_NUMBER(x) (VV_TYPE(x) == VAR_TYPE_INT || VV_TYPE(x) == VAR_TYPE_FLOAT)
-static inline bool VV_IS_NUMBER(varval_t *vv)
+VM_INLINE bool VV_IS_NUMBER(varval_t *vv)
 {
 	switch (VV_TYPE(vv))
 	{
@@ -28,7 +30,7 @@ static inline bool VV_IS_NUMBER(varval_t *vv)
 	}
 	return false;
 }
-static bool VV_IS_INTEGRAL(varval_t *vv)
+VM_INLINE bool VV_IS_INTEGRAL(varval_t *vv)
 {
 	switch (VV_TYPE(vv))
 	{
@@ -75,7 +77,7 @@ static const char *e_var_types_strings[] = {
 	0
 };
 
-static const char *vv_get_type_string(varval_t *vv) {
+VM_INLINE const char *vv_get_type_string(varval_t *vv) {
 	static char typestring[256] = { 0 };
 	snprintf(typestring, sizeof(typestring), "%s%s%c", VV_IS_UNSIGNED(vv) ? "unsigned": "", e_var_types_strings[VV_TYPE(vv)], VV_IS_POINTER(vv) ? '*' : '\0');
 	return typestring;
