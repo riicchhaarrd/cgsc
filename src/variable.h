@@ -1,5 +1,5 @@
 #pragma once
-#include "include/cidscropt.h"
+#include "include/gsc.h"
 
 #include "stdheader.h"
 

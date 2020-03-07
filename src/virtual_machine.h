@@ -2,7 +2,7 @@
 #include "stdheader.h"
 
 #include "variable.h"
-#include "include/cidscropt.h"
+#include "include/gsc.h"
 #include "cvector.h"
 #include "dynarray.h"
 #include "dynstack.h"

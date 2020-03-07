@@ -1,4 +1,4 @@
-#ifdef CIDSCROPT_STANDALONE
+#ifdef GSC_STANDALONE
 #include "virtual_machine.h"
 #include "common.h"
 #include <signal.h>
@@ -111,9 +111,9 @@ int main(int argc, char **argv, char **envp)
 	const char *filename = argv[1];
 #else
 	//const char *filename = "../examples/bench.gcx";
-	const char *filename = "C:/Users/R/Desktop/ore/deps/cidscropt/examples/bench.gsc";
+	const char *filename = "C:/Users/R/Desktop/ore/deps/gsc/examples/bench.gsc";
 #ifdef _WIN32
-	SetCurrentDirectoryA("C:/Users/R/Desktop/ore/deps/cidscropt/examples/");
+	SetCurrentDirectoryA("C:/Users/R/Desktop/ore/deps/gsc/examples/");
 #endif
 #endif
 #ifdef _WIN32

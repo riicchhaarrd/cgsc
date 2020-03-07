@@ -1,4 +1,4 @@
-#!/usr/bin/env cidscropt
+#!/usr/bin/env gsc
 fibR(n)
 {
 	if(n < 2) {

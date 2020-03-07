@@ -1,5 +1,5 @@
 #!/bin/bash
-cc="gcc -m32 -w -g -O3 -std=gnu99 -fPIC -DCIDSCROPT_STANDALONE"
+cc="gcc -m32 -w -g -O3 -std=gnu99 -fPIC -DGSC_STANDALONE"
 #cc="g++ -s -O2 -std=c++11"
 cd src
 mkdir -p obj
@@ -17,5 +17,5 @@ $cc -c resolve_exports.c -o obj/resolve_exports.o
 echo "Made all obj files."
 
 obj="$(ls obj/*.o)"
-$cc -L/lib32 -Wall $obj -o "../bin/cidscropt" -ldl -lm
+$cc -L/lib32 -Wall $obj -o "../bin/gsc" -ldl -lm
 echo "Done."

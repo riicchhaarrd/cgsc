@@ -1,5 +1,5 @@
 #!/bin/bash
-cc="emcc -w -Wall -m32 -s ASSERTIONS=1 -std=gnu99 -DCIDSCROPT_STANDALONE -s ALLOW_MEMORY_GROWTH=1"
+cc="emcc -w -Wall -m32 -s ASSERTIONS=1 -std=gnu99 -DGSC_STANDALONE -s ALLOW_MEMORY_GROWTH=1"
 cd src
 mkdir -p obj
 mkdir -p ../bin
@@ -16,5 +16,5 @@ $cc -c resolve_exports.c -o obj/resolve_exports.bc
 echo "Made all bc files."
 
 obj="$(ls obj/*.bc)"
-$cc $obj -o "../bin/cidscropt.html" -ldl -lm -s EXPORTED_FUNCTIONS='["_main", "_run_script", "_script_command"]' -s EXTRA_EXPORTED_RUNTIME_METHODS='["ccall", "cwrap"]'
+$cc $obj -o "../bin/gsc.html" -ldl -lm -s EXPORTED_FUNCTIONS='["_main", "_run_script", "_script_command"]' -s EXTRA_EXPORTED_RUNTIME_METHODS='["ccall", "cwrap"]'
 echo "Done."
