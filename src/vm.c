@@ -1265,7 +1265,10 @@ int vm_execute(vm_t *vm, int instr) {
 		} break;
 
 		case OP_GET_SELF: {
-			stack_push_vv(vm, vm->self);
+			if (!vm->thrunner)
+				stack_push(vm, 0);
+			else
+				stack_push_vv(vm, vm->thrunner->self);
 		} break;
 
 		case OP_GET_LENGTH: {
@@ -2226,6 +2229,114 @@ int vm_execute(vm_t *vm, int instr) {
 			stack_push_vv(vm, retval);
 		} break;
 
+		case OP_CALL_METHOD_THREAD: {
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
+#define START_PERF(x)
+#define END_PERF(x)
+			//#define START_PERF(x) unsigned long long x = GetTickCount64();
+			//#define END_PERF(x) vm_printf("END_PERF %llu for block %s (%d, %s)\n", GetTickCount64() - x, TOSTRING(x), __LINE__, __FILE__);
+			START_PERF(start)
+
+			int jmp_loc = stack_pop_int(vm);
+			int numargs = stack_pop_int(vm);
+			varval_t *new_self = stack_pop_vv(vm);
+			if (VV_USE_REF(new_self))
+				new_self->refs++;
+
+			START_PERF(args);
+
+			for (int i = numargs; i--;) {
+				varval_t *vv = (varval_t*)stack_pop(vm);
+				if (VV_USE_REF(vv))
+					vv->refs++;
+				vm->tmpstack[i] = (intptr_t)vv;
+			}
+			END_PERF(args);
+
+			/* create new thread */
+
+			START_PERF(find_thread);
+			vm_thread_t *thr = NULL;
+			for (int i = MAX_SCRIPT_THREADS; i--;) {
+				if (!vm->threadrunners[i].active) {
+					thr = &vm->threadrunners[i];
+					break;
+				}
+
+			}
+			END_PERF(find_thread);
+
+			if (thr == NULL) {
+				vm_printf("MAX SCRIPT THREADS\n");
+				return E_VM_RET_ERROR;
+			}
+			else {
+				//vm_printf("num threads = %d\n", vm->numthreadrunners);
+			}
+			++vm->numthreadrunners;
+			//don't clear the stack/and stacksize
+			memset(&thr->registers, 0, sizeof(thr->registers));
+			//prob just bottleneck anyway \/
+			//memset(thr->stack,0,thr->stacksize * sizeof(intptr_t)); //stack full empty ayy
+			thr->wait = 0;
+			thr->numargs = 0;
+			thr->active = true;
+			thr->instr = vm->instr;
+
+			//add new thread to list of threads for next frame if wait occurs etc
+
+			vm_thread_t *saverunner = vm->thrunner; //save current runner
+
+			vm->thrunner = thr;
+
+			//do all the call mimic stuff and sadly has to be same ish as normal call cuz the RET expects this and cba to change it
+
+			int curpos = vm_registers[REG_IP];
+			stack_push(vm, curpos);
+			//vm_printf("call jmp to %d, returning to %d\n", jmp_loc, curpos);
+
+			stack_push(vm, vm_registers[REG_BP]); //save the previous stack frame bp
+			vm_registers[REG_BP] = vm_registers[REG_SP] + 1;
+
+			memset(&vm_stack[vm_registers[REG_BP]], 0, sizeof(intptr_t) * MAX_LOCAL_VARS);
+
+			for (int i = numargs; i--;)
+				stack_push(vm, vm->tmpstack[numargs - i - 1]);
+
+			//alloc minimum of MAX_LOCAL_VARS values on stack for locals?
+			vm_registers[REG_SP] += MAX_LOCAL_VARS - numargs;
+			stack_push(vm, numargs);
+			stack_push(vm, NULL); //self is NULL in this case
+			vm->thrunner->self = new_self;
+
+			vm_registers[REG_IP] = jmp_loc;
+			/* end of normal call stuff */
+
+			START_PERF(run_thread);
+			while (vm->is_running && vm_registers[REG_IP] != 0) {
+				int thr_instr = vm->instr[vm_registers[REG_IP]++];
+
+				int vm_ret = vm_execute(vm, thr_instr);
+				if (vm_ret == E_VM_RET_ERROR)
+					return vm_ret;
+				else if (vm_ret == E_VM_RET_WAIT) {
+					break;
+				}
+			}
+			END_PERF(run_thread);
+
+			if (!vm_thread_is_stalled(vm, thr)) {
+				vm_execute(vm, OP_POP); //retval
+				thr->active = false;
+				--vm->numthreadrunners;
+				vm_thread_reset_events(vm, thr); //should kind of already have no events, otherwise we wouldn't end up here mhm?
+			}
+
+			END_PERF(start)
+
+			vm->thrunner = saverunner; //restore prev thread
+		} break;
 
 		case OP_CALL_THREAD: {
 #define STRINGIFY(x) #x
@@ -2302,6 +2413,14 @@ int vm_execute(vm_t *vm, int instr) {
 			//alloc minimum of MAX_LOCAL_VARS values on stack for locals?
 			vm_registers[REG_SP] += MAX_LOCAL_VARS - numargs;
 			stack_push(vm, numargs);
+			if (saverunner) //when calling main from _init or something thrunner may not exist yet
+			{
+				if (VV_USE_REF(saverunner->self))
+					saverunner->self->refs++;
+				stack_push(vm, saverunner->self);
+			}
+			else
+				stack_push(vm, NULL); //self is NULL in this case
 
 			vm_registers[REG_IP] = jmp_loc;
 			/* end of normal call stuff */
@@ -2481,11 +2600,13 @@ int vm_execute(vm_t *vm, int instr) {
 		} break;
 
 		case OP_CALL_METHOD: {
-#if 0
+			varval_t *self = (varval_t*)stack_pop(vm);
+			if (VV_USE_REF(self))
+				self->refs++;
+
 			int jmp_loc = read_int(vm);
 			int numargs = read_int(vm);
 
-			varval_t *self = (varval_t*)stack_get(vm, numargs);
 			for (int i = numargs; i--;) {
 				varval_t *vv = (varval_t*)stack_pop(vm);
 				if (VV_USE_REF(vv))
@@ -2508,10 +2629,10 @@ int vm_execute(vm_t *vm, int instr) {
 			//alloc minimum of MAX_LOCAL_VARS values on stack for locals?
 			vm_registers[REG_SP] += MAX_LOCAL_VARS - numargs;
 			stack_push(vm, numargs);
-
+			//as of now there should always be a threadrunner anyways so
+			stack_push(vm, vm->thrunner->self); //push previous self so we can restore it
+			vm->thrunner->self = self; //set new self to the threadrunner so we can access it easily
 			vm_registers[REG_IP] = jmp_loc;
-#endif
-			/* TODO IMPLEMENT */
 		} break;
 
 		case OP_CALL: {
@@ -2540,12 +2661,26 @@ int vm_execute(vm_t *vm, int instr) {
 			//alloc minimum of MAX_LOCAL_VARS values on stack for locals?
 			vm_registers[REG_SP] += MAX_LOCAL_VARS - numargs;
 			stack_push(vm, numargs);
+			if (vm->thrunner) //when calling main from _init or something thrunner may not exist yet
+			{
+				if (VV_USE_REF(vm->thrunner->self))
+					vm->thrunner->self->refs++;
+				stack_push(vm, vm->thrunner->self);
+			}
+			else
+				stack_push(vm, NULL); //self is NULL in this case
 
 			vm_registers[REG_IP] = jmp_loc;
 		} break;
 
 		case OP_RET: {
 			varval_t *retval = stack_pop_vv(vm);
+			varval_t *oldself = stack_pop_vv(vm);
+			if (vm->thrunner)
+			{
+				se_vv_remove_reference(vm, vm->thrunner->self);
+				vm->thrunner->self = oldself;
+			}
 			int numargs = stack_pop(vm);
 
 			for (int i = MAX_LOCAL_VARS; i--;) {
@@ -2750,13 +2885,10 @@ VM_INLINE int vm_exec_thread_pointer(vm_t *vm, int fp, int numargs) {
 
 int vm_exec_ent_thread_pointer(vm_t *vm, varval_t *new_self, int fp, int numargs) {
 	vm->thrunner = NULL;
-	varval_t *saveself = vm->self;
-	vm->self = new_self;
+	se_addobject(vm, new_self);
 	se_addint(vm, numargs);
 	se_addint(vm, fp);
-	int ret = vm_execute(vm, OP_CALL_THREAD);
-	vm->self = saveself;
-	return ret;
+	return vm_execute(vm, OP_CALL_METHOD_THREAD);
 }
 
 int vm_notify(vm_t *vm, varval_t *object, int stringindex, size_t numargs)
@@ -3185,7 +3317,7 @@ vm_t *vm_create() {
 
 	vm->level = se_createobject(vm, VT_OBJECT_LEVEL, NULL, NULL, NULL);
 	vm->level->refs = 1337; //will only free after vm frees yup
-	vm->self = NULL;
+	//vm->self = NULL;
 
 	//vm->program = (char*)vm_mem_alloc(vm, programsize);
 	//memcpy(vm->program, (void*)&program[0], programsize);

@@ -50,7 +50,9 @@ struct vm_thread_s {
 	intptr_t *stack, registers[e_vm_reg_len];
 	int numargs;
 	int wait;
+	//int flags; //unused for now
 	bool active;
+	varval_t *self;
 	//char string[512]; //used for getting string value types n stuff
 	vector strings;
 	vm_event_string_t eventstrings[VM_MAX_EVENTS]; //non ptr allocate once, don't wanna alloc/free too much mhm
@@ -58,6 +60,13 @@ struct vm_thread_s {
 	unsigned int numeventstrings;
 	unsigned char *instr;
 };
+#if 0
+typedef enum
+{
+	VM_THREAD_FLAG_NONE = 0,
+	VM_THREAD_FLAG_METHOD_CALL = BIT(0)
+} e_vm_thread_flags;
+#endif //maybe later, since for now just push to stack
 
 typedef intptr_t vm_function_t;
 
@@ -97,7 +106,8 @@ struct vm_s {
 #endif
 
 	varval_t *level;
-	varval_t *self;
+	//varval_t *self;
+
 	vector ffi_callbacks;
 
 	//vector vars;
