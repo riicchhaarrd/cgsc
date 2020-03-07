@@ -1717,6 +1717,67 @@ typedef struct
 	int type;
 } cond_jump_t;
 
+static int parser_method_call(parser_t *pp, const char *id, const char *method_name_ptr, bool threaded)
+{
+	vm_printf("parser_method_call(pp = %02X, id = %s, method_name_ptr = %s, threaded = %d)\n", pp, id, method_name_ptr, threaded);
+	//store local copy incase we lose pp->string
+	char method_name[1024] = { 0 };
+	snprintf(method_name, sizeof(method_name) - 1, "%s", method_name_ptr);
+
+	if (parser_variable(pp, id, true, false, NULL, OP_LOAD))
+		return 1;
+
+	//don't do this for now i guess, we won't support self.field method_call() TODO: implement [[self.field]] method_call()
+	//if (parser_process_variable_member_fields(pp, pp->string))
+		//return 1;
+	pp_expect(pp, TK_LPAREN);
+	int numargs = 0;
+
+	if (pp_accept(pp, TK_RPAREN))
+		goto no_args_lol;
+	do {
+		++numargs;
+		if (parser_expression(pp)) //auto pushes
+			return 1;
+	} while (pp_accept(pp, TK_COMMA));
+
+	pp_expect(pp, TK_RPAREN);
+no_args_lol:
+	{
+		bool found = false;
+		for (int i = 0; i <= pp->code_segment_size; i++) {
+			code_segment_t *seg = &pp->code_segments[i];
+			if (!strcmp(seg->id, method_name)) {
+				found = true;
+				program_add_opcode(pp, OP_CALL_METHOD);
+				pp->current_segment->relocations[pp->current_segment->relocation_size++] = pp->program_counter;
+				program_add_int(pp, seg->original_loc);
+				program_add_int(pp, numargs);
+				program_add_opcode(pp, OP_POP); //we don't store the result in this case
+				break;
+			}
+		}
+
+		if (!found) {
+
+			//just add it to the 'builtin' funcs and maybe that works? :D
+			//vm_printf("function '%s' does not exist!\n", id);
+			program_add_opcode(pp, OP_CALL_BUILTIN_METHOD);
+
+			scr_istring_t *istr = NULL;
+			int index = parser_find_indexed_string(pp, method_name, &istr);
+
+			if (istr == NULL)
+				index = parser_create_indexed_string(pp, method_name);
+			program_add_int(pp, index); //the index of string
+			program_add_int(pp, numargs);
+			program_add_opcode(pp, OP_POP); //we don't store the result in this case
+		}
+	}
+	pp_accept(pp, TK_SEMICOLON);
+	return 0;
+}
+
 static int parser_statement(parser_t *pp) {
 	bool is_thread_call = false;
 	int before = pp->curpos;
@@ -2006,14 +2067,48 @@ static int parser_statement(parser_t *pp) {
 		}
 #endif
 	}
-	else if (pp_accept(pp, TK_R_THREAD)) {
+	else if (pp_accept(pp, TK_R_THREAD))
+	{
 		is_thread_call = true;
 		pp_accept(pp, TK_IDENT);
-		goto accept_ident;
+		goto accept_identt;
 	}
-	else if (pp_accept(pp, TK_IDENT)) {
-	accept_ident:
-		parser_function_call(pp, pp->string, is_thread_call, false); //we shouldn't be allowed to make functions here right
+	else if (pp_accept(pp, TK_IDENT))
+	{
+		char id[1024] = { 0 }; //tough luck if it's > 1023
+		snprintf(id, sizeof(id) - 1, "%s", pp->string); //save the id (e.g like self / var names)
+		if (pp_accept(pp, TK_R_THREAD))
+		{
+			if (is_thread_call)
+			{
+				vm_printf("unexpected thread! double thread??\n");
+				return 1;
+			}
+			//TODO: support for variable fields method calls (e.g self.field abc() or self.field thread abc()) (in gsc it's actually like [[ self.field ]] thread abc() or [[ self.field ]] abc(), better to probably to do it like that
+			//conditions for a method call or threaded method call are either
+			//IDENT THREAD IDENT (e.g self thread abc())
+			//IDENT IDENT (e.g self abc())
+			//e.g self thread <method>();
+			pp_expect(pp, TK_IDENT); //expecting method name
+			if (parser_method_call(pp, id, pp->string, true))
+				return 1;
+		}
+		else if (pp_accept(pp, TK_IDENT))
+		{
+			if (is_thread_call)
+			{
+				vm_printf("unexpected thread! thread ident thread??\n");
+				return 1;
+			}
+			//normal method call
+			if (parser_method_call(pp, id, pp->string, false))
+				return 1;
+		}
+		else
+		{
+		accept_identt:
+			parser_function_call(pp, pp->string, is_thread_call, false); //we shouldn't be allowed to make functions here right
+		}
 	}
 	else if (pp_accept(pp, TK_RETURN)) {
 		if (!pp_accept(pp, TK_SEMICOLON)) {

@@ -2038,6 +2038,53 @@ int vm_execute(vm_t *vm, int instr) {
 		} break;
 
 		case OP_CALL_BUILTIN_METHOD: {
+
+			int method_name_idx = read_int(vm);
+			if (method_name_idx >= vm->istringlistsize)
+			{
+				vm_printf("internal method name error!\n");
+				return E_VM_RET_ERROR;
+			}
+
+			varval_t *self = (varval_t*)stack_pop(vm);
+
+			//vm_printf("func_name_idx=%d\n", func_name_idx);
+			const char *method_name = vm->istringlist[method_name_idx].string;
+
+			stockmethod_t *sm = se_find_method_by_name(vm, self->as.obj->type, method_name);
+
+			if (method_name == NULL || sm == NULL) {
+				vm_printf("built-in method '%s' does not exist! (%d)\n", method_name, method_name_idx);
+				return E_VM_RET_ERROR;
+			}
+			int numargs = read_int(vm);
+			vm->thrunner->numargs = numargs;
+			int prev_bp = vm_registers[REG_BP];
+
+			vm_registers[REG_BP] = vm_registers[REG_SP] - numargs + 1;
+
+			//do the calling here
+			varval_t *retval = NULL;
+			if (sm->call(vm, self) != 0)
+			{
+				retval = (varval_t*)stack_pop(vm);
+			}
+			else {
+				retval = NULL;
+			}
+
+			for (int i = numargs; i--;) {
+				varval_t *vv = (varval_t*)stack_pop(vm); //pop all local vars?
+				//--vv->refs;
+				se_vv_free(vm, vv);
+			}
+
+			vm_registers[REG_BP] = prev_bp;
+			stack_push_vv(vm, retval);
+			se_vv_free(vm, self);
+		} break;
+#if 0
+		case OP_CALL_BUILTIN_METHOD: {
 			int method_name_idx = read_int(vm);
 			if (method_name_idx >= vm->istringlistsize)
 				method_name_idx = 0; //meh should be NULL or so now it calls smth random from first
@@ -2096,6 +2143,7 @@ int vm_execute(vm_t *vm, int instr) {
 
 			stack_push_vv(vm, retval);
 		} break;
+#endif
 
 		case OP_CALL_BUILTIN: {
 

@@ -1110,6 +1110,7 @@ int sf_eval(vm_t *vm)
 
 int sm_test(vm_t *vm, varval_t *self)
 {
+	printf("sm_test\n");
 	se_addint(vm, 123);
 	return 1;
 }
