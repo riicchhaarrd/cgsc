@@ -2071,7 +2071,7 @@ static int parser_statement(parser_t *pp) {
 	{
 		is_thread_call = true;
 		pp_accept(pp, TK_IDENT);
-		goto accept_identt;
+		parser_function_call(pp, pp->string, is_thread_call, false);
 	}
 	else if (pp_accept(pp, TK_IDENT))
 	{
@@ -2106,8 +2106,7 @@ static int parser_statement(parser_t *pp) {
 		}
 		else
 		{
-		accept_identt:
-			parser_function_call(pp, pp->string, is_thread_call, false); //we shouldn't be allowed to make functions here right
+			parser_function_call(pp, id, is_thread_call, false); //we shouldn't be allowed to make functions here right
 		}
 	}
 	else if (pp_accept(pp, TK_RETURN)) {

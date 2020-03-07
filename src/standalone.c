@@ -99,7 +99,7 @@ int main(int argc, char **argv, char **envp)
 
 	if (argc > 1 && !strcmp(argv[1], "-v"))
 	{
-		printf("cidscropt standalone version (https://github.com/riicchhaarrd/cidscropt)\n");
+		printf("gsc (https://github.com/riicchhaarrd/gsc)\n");
 		return 0;
 	}
 
