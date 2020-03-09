@@ -1719,7 +1719,7 @@ typedef struct
 
 static int parser_method_call(parser_t *pp, const char *id, const char *method_name_ptr, bool threaded)
 {
-	vm_printf("parser_method_call(pp = %02X, id = %s, method_name_ptr = %s, threaded = %d)\n", pp, id, method_name_ptr, threaded);
+	//vm_printf("parser_method_call(pp = %02X, id = %s, method_name_ptr = %s, threaded = %d)\n", pp, id, method_name_ptr, threaded);
 	//store local copy incase we lose pp->string
 	char method_name[1024] = { 0 };
 	snprintf(method_name, sizeof(method_name) - 1, "%s", method_name_ptr);
