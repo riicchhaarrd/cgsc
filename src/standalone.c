@@ -116,7 +116,7 @@ int main(int argc, char **argv, char **envp)
 	SetCurrentDirectoryA("C:/Users/R/Desktop/ore/deps/gsc/examples/");
 #endif
 #endif
-#ifdef _WIN32
+#if 0//#ifdef _WIN32
 	LARGE_INTEGER freq;
 	QueryPerformanceFrequency(&freq);
 
@@ -172,7 +172,7 @@ int main(int argc, char **argv, char **envp)
 		sys_sleep(fps_delta);
 	}
 	vm_free(vm);
-#ifdef _WIN32
+#if 0//#ifdef _WIN32
 	LARGE_INTEGER end;
 	QueryPerformanceCounter(&end);
 
@@ -180,7 +180,7 @@ int main(int argc, char **argv, char **envp)
 	vm_printf("Finished in %g seconds\n", interval);
 #endif
 _wait_and_exit:
-#ifdef _WIN32
+#if 0//#ifdef _WIN32
 	//vm_printf("Press [ENTER] to continue.\n");
 	//getchar();
 #endif
