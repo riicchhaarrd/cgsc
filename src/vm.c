@@ -2048,8 +2048,9 @@ int vm_execute(vm_t *vm, int instr) {
 				vm_printf("internal method name error!\n");
 				return E_VM_RET_ERROR;
 			}
-
-			varval_t *self = (varval_t*)stack_pop(vm);
+			int numargs = read_int(vm);
+			varval_t *self = (varval_t*)stack_get(vm, numargs);
+			//printf("self = %s, %d\n", VV_TYPE_STRING(self), self == vm->level);
 
 			//vm_printf("func_name_idx=%d\n", func_name_idx);
 			const char *method_name = vm->istringlist[method_name_idx].string;
@@ -2060,11 +2061,19 @@ int vm_execute(vm_t *vm, int instr) {
 				vm_printf("built-in method '%s' does not exist! (%d)\n", method_name, method_name_idx);
 				return E_VM_RET_ERROR;
 			}
-			int numargs = read_int(vm);
 			vm->thrunner->numargs = numargs;
 			int prev_bp = vm_registers[REG_BP];
 
 			vm_registers[REG_BP] = vm_registers[REG_SP] - numargs + 1;
+
+			//test all vars
+#if 0
+			for (int i = 0; i < numargs; ++i)
+			{
+				varval_t *vv = se_argv(vm, i);
+				printf("vv %d = %s\n", i, VV_TYPE_STRING(vv));
+			}
+#endif
 
 			//do the calling here
 			varval_t *retval = NULL;
@@ -2081,10 +2090,11 @@ int vm_execute(vm_t *vm, int instr) {
 				//--vv->refs;
 				se_vv_free(vm, vv);
 			}
-
+			//_self is the same as self, but now we're finally just popping it off the stack
+			varval_t *_self = (varval_t*)stack_pop(vm); //pop self aswell
 			vm_registers[REG_BP] = prev_bp;
 			stack_push_vv(vm, retval);
-			se_vv_free(vm, self);
+			se_vv_free(vm, _self);
 		} break;
 #if 0
 		case OP_CALL_BUILTIN_METHOD: {
@@ -2240,9 +2250,6 @@ int vm_execute(vm_t *vm, int instr) {
 
 			int jmp_loc = stack_pop_int(vm);
 			int numargs = stack_pop_int(vm);
-			varval_t *new_self = stack_pop_vv(vm);
-			if (VV_USE_REF(new_self))
-				new_self->refs++;
 
 			START_PERF(args);
 
@@ -2253,6 +2260,9 @@ int vm_execute(vm_t *vm, int instr) {
 				vm->tmpstack[i] = (intptr_t)vv;
 			}
 			END_PERF(args);
+			varval_t *new_self = stack_pop_vv(vm);
+			if (VV_USE_REF(new_self))
+				new_self->refs++;
 
 			/* create new thread */
 
@@ -2600,10 +2610,6 @@ int vm_execute(vm_t *vm, int instr) {
 		} break;
 
 		case OP_CALL_METHOD: {
-			varval_t *self = (varval_t*)stack_pop(vm);
-			if (VV_USE_REF(self))
-				self->refs++;
-
 			int jmp_loc = read_int(vm);
 			int numargs = read_int(vm);
 
@@ -2613,6 +2619,10 @@ int vm_execute(vm_t *vm, int instr) {
 					vv->refs++;
 				vm->tmpstack[i] = (intptr_t)vv;
 			}
+
+			varval_t *self = (varval_t*)stack_pop(vm);
+			if (VV_USE_REF(self))
+				self->refs++;
 
 			int curpos = vm_registers[REG_IP];
 			stack_push(vm, curpos);
@@ -2883,9 +2893,22 @@ VM_INLINE int vm_exec_thread_pointer(vm_t *vm, int fp, int numargs) {
 	return vm_execute(vm, OP_CALL_THREAD);
 }
 
-int vm_exec_ent_thread_pointer(vm_t *vm, varval_t *new_self, int fp, int numargs) {
+int vm_exec_ent_thread_pointer(vm_t *vm, varval_t *new_self, int fp, int numargs)
+{
 	vm->thrunner = NULL;
-	se_addobject(vm, new_self);
+	//move every argument up one place, then place new_self at the front
+	//instead of doing this, could've just doine REG_BP inside vm->stack with for(varval_t *cur next ptr setting
+	for (int i = numargs; i--;) {
+		varval_t *vv = (varval_t*)stack_pop(vm);
+		//no need for refs, just moving ptrs
+		vm->tmpstack[i] = (intptr_t)vv;
+	}
+	se_addobject(vm, new_self); //push self (at the begining)
+
+	for (int i = numargs; i--;)
+		stack_push(vm, vm->tmpstack[numargs - i - 1]);
+	//push all the arguments back on the stack for the correct order we expect
+
 	se_addint(vm, numargs);
 	se_addint(vm, fp);
 	return vm_execute(vm, OP_CALL_METHOD_THREAD);
@@ -3381,6 +3404,11 @@ void * vm_get_user_pointer(vm_t *vm)
 void vm_set_user_pointer(vm_t *vm, void *ptr)
 {
 	vm->m_userpointer = ptr;
+}
+
+varval_t *vm_get_level_object(vm_t *vm)
+{
+	return vm->level;
 }
 
 void vm_set_printf_hook(vm_t *vm, void *hook)

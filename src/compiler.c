@@ -1749,16 +1749,36 @@ no_args_lol:
 			code_segment_t *seg = &pp->code_segments[i];
 			if (!strcmp(seg->id, method_name)) {
 				found = true;
-				program_add_opcode(pp, OP_CALL_METHOD);
-				pp->current_segment->relocations[pp->current_segment->relocation_size++] = pp->program_counter;
-				program_add_int(pp, seg->original_loc);
-				program_add_int(pp, numargs);
-				program_add_opcode(pp, OP_POP); //we don't store the result in this case
+				if (threaded)
+				{
+					program_add_opcode(pp, OP_PUSH);
+					program_add_int(pp, numargs);
+
+					program_add_opcode(pp, OP_PUSH);
+					pp->current_segment->relocations[pp->current_segment->relocation_size++] = pp->program_counter;
+					program_add_int(pp, seg->original_loc);
+					program_add_opcode(pp, OP_CALL_METHOD_THREAD);
+				}
+				else
+				{
+
+					program_add_opcode(pp, OP_CALL_METHOD);
+					pp->current_segment->relocations[pp->current_segment->relocation_size++] = pp->program_counter;
+					program_add_int(pp, seg->original_loc);
+					program_add_int(pp, numargs);
+					program_add_opcode(pp, OP_POP); //we don't store the result in this case
+				}
 				break;
 			}
 		}
 
-		if (!found) {
+		if (!found)
+		{
+			if (threaded)
+			{
+				vm_printf("cannot call builtin method threaded!\n");
+				return 1;
+			}
 
 			//just add it to the 'builtin' funcs and maybe that works? :D
 			//vm_printf("function '%s' does not exist!\n", id);
