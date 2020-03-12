@@ -3406,6 +3406,11 @@ void vm_set_user_pointer(vm_t *vm, void *ptr)
 	vm->m_userpointer = ptr;
 }
 
+varval_t *vm_get_level_object(vm_t *vm)
+{
+	return vm->level;
+}
+
 void vm_set_printf_hook(vm_t *vm, void *hook)
 {
 	vm->m_printf_hook = hook;

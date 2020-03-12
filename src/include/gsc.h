@@ -74,6 +74,7 @@ int vm_notify_string(vm_t *vm, varval_t *vv, const char *str, size_t numargs);
 int vm_exec_ent_thread(vm_t *vm, varval_t *new_self, const char *func_name, int numargs);
 void *vm_get_user_pointer(vm_t*);
 void vm_set_user_pointer(vm_t*, void*);
+varval_t *vm_get_level_object(vm_t *vm);
 void vm_set_printf_hook(vm_t *vm, void *hook);
 
 void vm_free(vm_t *vm);
