@@ -2064,7 +2064,7 @@ int vm_execute(vm_t *vm, int instr) {
 			vm->thrunner->numargs = numargs;
 			int prev_bp = vm_registers[REG_BP];
 
-			vm_registers[REG_BP] = vm_registers[REG_SP] - numargs + 1; //account for (self) also being on the stack
+			vm_registers[REG_BP] = vm_registers[REG_SP] - numargs + 1;
 
 			//test all vars
 #if 0
