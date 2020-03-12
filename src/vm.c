@@ -2250,9 +2250,6 @@ int vm_execute(vm_t *vm, int instr) {
 
 			int jmp_loc = stack_pop_int(vm);
 			int numargs = stack_pop_int(vm);
-			varval_t *new_self = stack_pop_vv(vm);
-			if (VV_USE_REF(new_self))
-				new_self->refs++;
 
 			START_PERF(args);
 
@@ -2263,6 +2260,9 @@ int vm_execute(vm_t *vm, int instr) {
 				vm->tmpstack[i] = (intptr_t)vv;
 			}
 			END_PERF(args);
+			varval_t *new_self = stack_pop_vv(vm);
+			if (VV_USE_REF(new_self))
+				new_self->refs++;
 
 			/* create new thread */
 
@@ -2893,9 +2893,22 @@ VM_INLINE int vm_exec_thread_pointer(vm_t *vm, int fp, int numargs) {
 	return vm_execute(vm, OP_CALL_THREAD);
 }
 
-int vm_exec_ent_thread_pointer(vm_t *vm, varval_t *new_self, int fp, int numargs) {
+int vm_exec_ent_thread_pointer(vm_t *vm, varval_t *new_self, int fp, int numargs)
+{
 	vm->thrunner = NULL;
-	se_addobject(vm, new_self);
+	//move every argument up one place, then place new_self at the front
+	//instead of doing this, could've just doine REG_BP inside vm->stack with for(varval_t *cur next ptr setting
+	for (int i = numargs; i--;) {
+		varval_t *vv = (varval_t*)stack_pop(vm);
+		//no need for refs, just moving ptrs
+		vm->tmpstack[i] = (intptr_t)vv;
+	}
+	se_addobject(vm, new_self); //push self (at the begining)
+
+	for (int i = numargs; i--;)
+		stack_push(vm, vm->tmpstack[numargs - i - 1]);
+	//push all the arguments back on the stack for the correct order we expect
+
 	se_addint(vm, numargs);
 	se_addint(vm, fp);
 	return vm_execute(vm, OP_CALL_METHOD_THREAD);
