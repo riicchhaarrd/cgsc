@@ -2058,7 +2058,7 @@ int vm_execute(vm_t *vm, int instr) {
 			stockmethod_t *sm = se_find_method_by_name(vm, self->as.obj->type, method_name);
 
 			if (method_name == NULL || sm == NULL) {
-				vm_printf("built-in method '%s' does not exist! (%d)\n", method_name, method_name_idx);
+				vm_printf("built-in method '%s' does not exist! (%d) [%s, %d]\n", method_name, method_name_idx, VV_TYPE_STRING(self), self->as.obj->type);
 				return E_VM_RET_ERROR;
 			}
 			vm->thrunner->numargs = numargs;
