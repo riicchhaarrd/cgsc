@@ -1406,7 +1406,7 @@ int vm_execute(vm_t *vm, int instr) {
 								vm_set_struct_field_value(vm, cs, field, vtb, vv);
 							}
 							else
-								vm_printf("field not found for struct %d!\n", cs->name);
+								vm_printf("field '%s' not found for struct '%s'!\n", str, cs->name);
 						}
 						else
 							vm_printf("cs is NULL! %d\n", vtb->type);

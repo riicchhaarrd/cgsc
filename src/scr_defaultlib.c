@@ -24,9 +24,7 @@
 #include "parser.h"
 #include "dynstring.h"
 //#pragma comment(lib, "SDL2.lib")
-#ifdef _WIN32
-static bool wsa_init = false;
-#endif
+
 bool resolve_adr(const char *addr_str, struct sockaddr_in *adr) {
 	char ip_str[256] = { 0 };
 	int ip_stri = 0;
@@ -57,19 +55,9 @@ bool resolve_adr(const char *addr_str, struct sockaddr_in *adr) {
 	//Common::Printf("Resolved address: %s:%s to %s\n", ip_str, (port_str + 1), adr->getIPString());
 	return true;
 }
-#ifdef _WIN32
-static WSADATA wsaData;
-#endif
-static int sf_sendpacket(vm_t *vm) {
-#ifdef _WIN32
-	if (!wsa_init) {
-		if (WSAStartup(MAKEWORD(2, 0), &wsaData) != 0) {
-			vm_printf("wsastartup failed\n");
-			return 0;
-		}
-		wsa_init = true;
-	}
-#endif
+
+static int sf_sendpacket(vm_t *vm)
+{
 	SOCKET sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (sock == INVALID_SOCKET) {
 		vm_printf("failed to create socket\n");
