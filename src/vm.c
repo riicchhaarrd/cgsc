@@ -2645,6 +2645,46 @@ int vm_execute(vm_t *vm, int instr) {
 			vm_registers[REG_IP] = jmp_loc;
 		} break;
 
+		case OP_CALL_FUNCTION_POINTER:
+		{
+			//int jmp_loc = read_int(vm);
+			int numargs = read_int(vm);
+
+			for (int i = numargs; i--;) {
+				varval_t *vv = (varval_t*)stack_pop(vm);
+				if (VV_USE_REF(vv))
+					vv->refs++;
+				vm->tmpstack[i] = (intptr_t)vv;
+			}
+			int jmp_loc = stack_pop_int(vm);
+
+			int curpos = vm_registers[REG_IP];
+			stack_push(vm, curpos);
+			//vm_printf("call jmp to %d, returning to %d\n", jmp_loc, curpos);
+
+			stack_push(vm, vm_registers[REG_BP]); //save the previous stack frame bp
+			vm_registers[REG_BP] = vm_registers[REG_SP] + 1;
+
+			memset(&vm_stack[vm_registers[REG_BP]], 0, sizeof(intptr_t) * MAX_LOCAL_VARS);
+
+			for (int i = numargs; i--;)
+				stack_push(vm, vm->tmpstack[numargs - i - 1]);
+
+			//alloc minimum of MAX_LOCAL_VARS values on stack for locals?
+			vm_registers[REG_SP] += MAX_LOCAL_VARS - numargs;
+			stack_push(vm, numargs);
+			if (vm->thrunner) //when calling main from _init or something thrunner may not exist yet
+			{
+				if (VV_USE_REF(vm->thrunner->self))
+					vm->thrunner->self->refs++;
+				stack_push(vm, vm->thrunner->self);
+			}
+			else
+				stack_push(vm, NULL); //self is NULL in this case
+
+			vm_registers[REG_IP] = jmp_loc;
+		} break;
+
 		case OP_CALL: {
 			int jmp_loc = read_int(vm);
 			int numargs = read_int(vm);
