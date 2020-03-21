@@ -98,6 +98,8 @@ int se_argc(vm_t*);
 #define se_getnumparams(vm) se_argc(vm)
 
 int se_getint(vm_t*, int);
+typedef intptr_t vm_function_t;
+vm_function_t se_getfunc(vm_t *vm, int i);
 float se_getfloat(vm_t*, int);
 const char *se_getstring(vm_t*, int);
 void se_getvector(vm_t*, int, float*);

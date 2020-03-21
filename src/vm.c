@@ -351,13 +351,15 @@ uint8_t VM_INLINE read_byte(vm_t *vm) {
 	return op;
 }
 
-int VM_INLINE read_int(vm_t *vm) {
+int VM_INLINE read_int(vm_t *vm)
+{
 	int i = *(int*)(vm->instr + vm_registers[REG_IP]);
 	vm_registers[REG_IP] += sizeof(int);
 	return i;
 }
 
-float VM_INLINE read_float(vm_t *vm) {
+float VM_INLINE read_float(vm_t *vm)
+{
 	float f = *(float*)(vm->instr + vm_registers[REG_IP]);
 	vm_registers[REG_IP] += sizeof(float);
 	return f;
@@ -550,26 +552,30 @@ const char *se_vv_to_string(vm_t *vm, varval_t *vv)
 	return p;
 }
 
-float se_getfloat(vm_t *vm, int i) {
+float se_getfloat(vm_t *vm, int i)
+{
 	varval_t *vv = se_argv(vm, i);
 	float ret = (float)vv_cast_double(vm, vv);
 	return ret;
 }
 
-const char *se_getstring(vm_t *vm, int i) {
+const char *se_getstring(vm_t *vm, int i)
+{
 	varval_t *vv = se_argv(vm, i);
 	return se_vv_to_string(vm, vv);
 }
 
-int se_getint(vm_t *vm, int i) {
+int se_getint(vm_t *vm, int i)
+{
 	varval_t *vv = se_argv(vm, i);
 	int ret = se_vv_to_int(vm, vv);
 	return ret;
 }
 
-int se_getfunc(vm_t *vm, int i) {
+vm_function_t se_getfunc(vm_t *vm, int i)
+{
 	varval_t *vv = se_argv(vm, i);
-	int ret = se_vv_to_int(vm, vv);
+	vm_function_t ret = (vm_function_t)se_vv_to_int(vm, vv);
 	return ret;
 }
 
@@ -2210,8 +2216,8 @@ int vm_execute(vm_t *vm, int instr) {
 				vm_ffi_lib_func_t *libfunc = vm_library_function_get_any(vm, lookupname, &which);
 				//if this is too slow, could just make a array lookup table with indices of strings of the functions customized istring of some sorts and just
 				//directly access the array then but for now let's do this
-				int vm_do_jit(vm_t *vm, vm_ffi_lib_func_t*);
-				if (libfunc == NULL || vm_do_jit(vm, libfunc) != 0)
+				int vm_do_ffi(vm_t *vm, vm_ffi_lib_func_t*);
+				if (libfunc == NULL || vm_do_ffi(vm, libfunc) != 0)
 				{
 					vm_printf("ffi function '%s' not found!\n", lookupname);
 					retval = NULL;
@@ -3021,6 +3027,467 @@ int vm_exec_thread(vm_t *vm, const char *func_name, int numargs) {
 	return status;
 }
 
+static vm_ffi_callback_t g_ffi_callbacks[VM_MAX_FFI_CALLBACKS] = { 0 };
+
+size_t mem_get_page_size()
+{
+	size_t page_size = 0;
+#ifdef _WIN32
+	SYSTEM_INFO system_info;
+	GetSystemInfo(&system_info);
+	page_size = system_info.dwPageSize;
+#else
+	page_size = getpagesize();
+#endif
+	return page_size;
+}
+
+static char* mem_page_alloc(/*size_t n*/)
+{
+	size_t page_size = mem_get_page_size();
+#ifdef _WIN32
+	char *buf = VirtualAlloc(0, page_size, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+#else
+	char *buf = (char*)mmap(NULL, page_size, PROT_READ | PROT_WRITE | PROT_EXEC,
+		MAP_PRIVATE | MAP_ANON, -1, 0);
+#endif
+	memset(buf, 0x90, page_size);
+	return buf;
+}
+
+static void mem_page_free(void *buf)
+{
+#ifdef _WIN32
+	VirtualFree(buf, 0, MEM_RELEASE);
+#else
+	munmap(jit, page_size);
+#endif
+}
+
+static vm_thread_t *vm_set_active_thread(vm_t *vm, vm_thread_t *thread)
+{
+	vm_thread_t *old = vm->thrunner;
+	vm->thrunner = thread;
+	return old;
+}
+
+static vm_thread_t *vm_request_thread(vm_t *vm)
+{
+	vm_thread_t *thr = NULL;
+	for (int i = MAX_SCRIPT_THREADS; i--;) {
+		if (!vm->threadrunners[i].active) {
+			thr = &vm->threadrunners[i];
+			break;
+		}
+
+	}
+
+	if (thr == NULL)
+	{
+		vm_printf("MAX SCRIPT THREADS\n");
+		return E_VM_RET_ERROR;
+	}
+	else {
+		//vm_printf("num threads = %d\n", vm->numthreadrunners);
+	}
+	++vm->numthreadrunners;
+	//don't clear the stack/and stacksize
+	memset(&thr->registers, 0, sizeof(thr->registers));
+	//prob just bottleneck anyway \/
+	//memset(thr->stack,0,thr->stacksize * sizeof(intptr_t)); //stack full empty ayy
+	thr->wait = 0;
+	thr->numargs = 0;
+	thr->active = true;
+	thr->instr = vm->instr;
+	return thr;
+}
+
+//expecting a function call of any sort before this, e.g method call, normal func call, function ptr call that's why we pop at end
+static void vm_call_function_pointer_thread(vm_t *vm, vm_thread_t *thr, int jmp_loc, int numargs)
+{
+	vm_thread_t *saverunner = vm->thrunner; //save current runner
+
+	vm->thrunner = thr;
+
+	//do all the call mimic stuff and sadly has to be same ish as normal call cuz the RET expects this and cba to change it
+
+	int curpos = vm_registers[REG_IP];
+	stack_push(vm, curpos);
+	//vm_printf("call jmp to %d, returning to %d\n", jmp_loc, curpos);
+
+	stack_push(vm, vm_registers[REG_BP]); //save the previous stack frame bp
+	vm_registers[REG_BP] = vm_registers[REG_SP] + 1;
+
+	memset(&vm_stack[vm_registers[REG_BP]], 0, sizeof(intptr_t) * MAX_LOCAL_VARS);
+
+	for (int i = numargs; i--;)
+		stack_push(vm, vm->tmpstack[numargs - i - 1]);
+
+	//alloc minimum of MAX_LOCAL_VARS values on stack for locals?
+	vm_registers[REG_SP] += MAX_LOCAL_VARS - numargs;
+	stack_push(vm, numargs);
+	if (saverunner) //when calling main from _init or something thrunner may not exist yet
+	{
+		if (VV_USE_REF(saverunner->self))
+			saverunner->self->refs++;
+		stack_push(vm, saverunner->self);
+	}
+	else
+		stack_push(vm, NULL); //self is NULL in this case
+
+	vm_registers[REG_IP] = jmp_loc;
+	/* end of normal call stuff */
+
+	START_PERF(run_thread);
+	while (vm->is_running && vm_registers[REG_IP] != 0) {
+		int thr_instr = vm->instr[vm_registers[REG_IP]++];
+
+		int vm_ret = vm_execute(vm, thr_instr);
+		if (vm_ret == E_VM_RET_ERROR)
+			return vm_ret;
+		else if (vm_ret == E_VM_RET_WAIT) {
+			break;
+		}
+	}
+	END_PERF(run_thread);
+
+	if (!vm_thread_is_stalled(vm, thr)) {
+		vm_execute(vm, OP_POP); //retval
+		thr->active = false;
+		--vm->numthreadrunners;
+		vm_thread_reset_events(vm, thr); //should kind of already have no events, otherwise we wouldn't end up here mhm?
+	}
+
+	END_PERF(start)
+
+	vm->thrunner = saverunner; //restore prev thread
+}
+
+static void _simple_ffi_callback(vm_function_t fp, vm_t *vm)
+{
+	//printf("_simple_ffi_callback(fp=%d,vm=%02X)\n", fp, vm);
+
+	vm_thread_t *new_thr = vm_request_thread(vm);
+	vm_call_function_pointer_thread(vm, new_thr, fp, 0);
+}
+
+static char *ffi_create_c_callback(vm_t *vm, vm_function_t fp)
+{
+	char *mem = mem_page_alloc();
+	intptr_t *addr = (intptr_t*)(mem + 100); //should be fine for now, we don't have 100 opcodes here yet
+	*addr = (intptr_t)_simple_ffi_callback;
+	char *ptr = mem;
+	//emit(&ptr, 0xcc); //__asm int 3
+	
+	push(&ptr, REG_EBP);
+	mov(&ptr, REG_EBP, REG_ESP);
+
+	push_imm(&ptr, vm);
+	push_imm(&ptr, fp);
+
+	emit(&ptr, 0xff);
+	emit(&ptr, 0x15);
+	dd(&ptr, addr);
+#if 0
+	emit(&ptr, 0x83);
+	emit(&ptr, 0xc4);
+	emit(&ptr, 8);
+#endif
+	emit(&ptr, 0xc9); //leave
+	ret(&ptr, 0);
+	return mem;
+}
+
+void vm_unregister_c_ffi_callbacks(vm_t *vm)
+{
+	for (int i = 0; i < VM_MAX_FFI_CALLBACKS; ++i)
+	{
+		if (!g_ffi_callbacks[i].inuse || g_ffi_callbacks[i].vm != vm) continue;
+		mem_page_free(g_ffi_callbacks[i].cfunc);
+		g_ffi_callbacks[i].inuse = false;
+	}
+}
+
+bool vm_register_c_ffi_callback(vm_t *vm, char *cfunc)
+{
+	for (int i = 0; i < VM_MAX_FFI_CALLBACKS; ++i)
+	{
+		if (!g_ffi_callbacks[i].inuse)
+		{
+			vm_ffi_callback_t *cb = &g_ffi_callbacks[i];
+			//is set in the cfunc (pushed as arg to the callback wrapper)
+			//cb->callback = fp;
+			cb->cfunc = cfunc;
+			cb->inuse = true;
+			cb->numargs = 0;
+			cb->vm = vm;
+			return true;
+		}
+	}
+	return false;
+}
+
+typedef enum
+{
+	FFI_SUCCESS,
+	FFI_GENERIC_ERROR,
+	FFI_LIBRARY_NOT_FOUND,
+	FFI_FUNCTION_NOT_FOUND,
+} ffi_call_result_t;
+
+int vm_do_ffi(vm_t *vm, vm_ffi_lib_func_t *lf)
+{
+	int status = FFI_GENERIC_ERROR;
+
+#ifndef _WIN32
+#define HMODULE void*
+#define DWORD void*
+#define GetProcAddress dlsym
+#define FreeLibrary dlclose
+#endif
+
+#if 0
+
+#ifdef _WIN32
+	HMODULE lib = LoadLibraryA(libname);
+#else
+	void *lib = dlopen(libname, RTLD_LAZY);
+#endif
+	if (!lib)
+		return FFI_LIBRARY_NOT_FOUND;
+	DWORD addr = GetProcAddress(lib, funcname);
+	if (!addr)
+	{
+		return FFI_FUNCTION_NOT_FOUND;
+	}
+
+#endif
+
+	DWORD addr = lf->address;
+
+	int funcsize = 2000;
+	size_t page_size = 0;
+#ifdef _WIN32
+	SYSTEM_INFO system_info;
+	GetSystemInfo(&system_info);
+	page_size = system_info.dwPageSize;
+
+	// prepare the memory in which the machine code will be put (it's not executable yet):
+	char *buf = VirtualAlloc(0, page_size, MEM_COMMIT, PAGE_READWRITE);
+#else
+	page_size = getpagesize();
+	char *buf = (char*)mmap(NULL, page_size, PROT_READ | PROT_WRITE | PROT_EXEC,
+		MAP_PRIVATE | MAP_ANON, -1, 0);
+#endif
+	char *jit = buf;
+	jit += 32;
+
+	//char *jit = malloc(2000);
+
+	//vm_printf("jit loc = %02X\n", jit);
+	//int j = 0;
+	memset(buf, 0x90, page_size);
+
+#if 1
+	push(&jit, REG_EBP);
+	mov(&jit, REG_EBP, REG_ESP);
+#endif
+	//sub_imm(&jit, REG_ESP, 0x12);
+	//sub_imm(&jit, REG_ESP, 0x10);
+
+	int sc = 0; //stack cleanup
+
+	//jit[j++] = 0xcc; //int 3
+	//emit(&jit, 0xcd); //int 3
+	//emit(&jit, 0x3);
+
+	int typecount[VAR_TYPE_NULL + 1] = { 0 };
+	int tcp[VAR_TYPE_NULL + 1] = { 0 };
+
+	int numargs = se_argc(vm);
+	for (int i = 0; i < numargs; i++)
+	{
+		varval_t *arg = se_argv(vm, numargs - i - 1);
+		if (!VV_IS_POINTER(arg))
+			++typecount[VV_TYPE(arg)];
+	}
+	sub_imm(&jit, REG_ESP, typecount[VAR_TYPE_FLOAT] * sizeof(double));
+	double *ds = (double*)vm_mem_alloc(vm, typecount[VAR_TYPE_FLOAT] * sizeof(double));
+
+	for (int i = 0; i < numargs; i++)
+	{
+		varval_t *arg = se_argv(vm, numargs - i - 1);
+		if (VV_TYPE(arg) == VAR_TYPE_NULL)
+		{
+			push_imm(&jit, NULL);
+		}
+		else if (VV_TYPE(arg) == VAR_TYPE_FLOAT)
+		{
+			//fld qword ptr offset
+			emit(&jit, 0xdd);
+			emit(&jit, 0x05);
+			ds[tcp[VAR_TYPE_FLOAT]] = (double)arg->as.flt;
+			//static double test = 3.14;
+			//test = (double)arg->as.flt;
+			dd(&jit, (intptr_t)&ds[tcp[VAR_TYPE_FLOAT]]);
+			++tcp[VAR_TYPE_FLOAT];
+
+			//lea esp, [esp - 8]
+			emit(&jit, 0x8d);
+			emit(&jit, 0x64);
+			emit(&jit, 0x24);
+			emit(&jit, 0xf8);
+
+			//fstp qword ptr [esp]
+			emit(&jit, 0xdd);
+			emit(&jit, 0x1c);
+			emit(&jit, 0x24);
+			/*
+			emit(&jit, 0xdd);
+			emit(&jit, 0x5c);
+			emit(&jit, 0x24);
+			emit(&jit, 0xfc + (i+1) * sizeof(float)); //should be 4
+			*/
+
+			sc += sizeof(float); //should be 4
+		}
+		else
+		{
+			void *p = arg->as.ptr;
+			if (VV_IS_POINTER(arg))
+			{
+				varval_t *val = (varval_t*)arg->as.ptr;
+				push_imm(&jit, &val->as);
+			}
+			else if (VV_IS_STRING(arg))
+				push_imm(&jit, se_vv_to_string(vm, arg));
+			else
+			{
+				if (VV_TYPE(arg) == VAR_TYPE_OBJECT)
+				{
+					switch (arg->as.obj->type)
+					{
+					case VT_OBJECT_BUFFER:
+					{
+						vt_buffer_t *vtb = (vt_buffer_t*)arg->as.obj->obj;
+						push_imm(&jit, vtb->data);
+					} break;
+					default: goto _ffi_end;
+					}
+				}
+				else if (VV_TYPE(arg) == VAR_TYPE_FUNCTION_POINTER)
+				{
+					//register it in the global map
+					char *cfunc = ffi_create_c_callback(vm, arg->as.integer);
+					//printf("created cfunc %02X for %d\n", cfunc, arg->as.integer);
+					vm_register_c_ffi_callback(vm, cfunc);
+					push_imm(&jit, cfunc);
+				}
+				else
+					push_imm(&jit, p);
+			}
+		}
+	}
+#if 1
+	//special case of call API 
+	//emit(&jit, 0x36);
+	//segment override mhm
+	emit(&jit, 0xff);
+	emit(&jit, 0x15);
+	dd(&jit, &addr);
+#if 0
+	//asm int 3
+	emit(&jit, 0xcd);
+	emit(&jit, 0x03);
+#endif
+#endif
+
+	emit(&jit, 0x83);
+	emit(&jit, 0xc4);
+	emit(&jit, sc);
+#if 0
+	jit[j++] = 0x83;
+	jit[j++] = 0xc4;
+	jit[j++] = sc; //add esp, X
+#endif
+
+	//xor(&jit, EAX, EAX);
+#if 1
+	emit(&jit, 0xc9); //leave
+#endif
+	ret(&jit, 0);
+	//JIT_EMIT(X86_LEAVE);
+	//JIT_EMIT(X86_RET);
+
+	//j = jit - buf;
+	//vm_printf("j=%02X\n", j);
+#ifdef _WIN32
+	DWORD old;
+	VirtualProtect(buf, page_size, PAGE_EXECUTE_READ, &old);
+#else
+	mprotect(buf, page_size, PROT_READ | PROT_EXEC | PROT_WRITE);
+#endif
+
+	//__asm int 3
+
+
+	if (vm->cast_stack_ptr > 0)
+	{
+		int cast_type = vm->cast_stack[vm->cast_stack_ptr - 1];
+		//vm_printf("we want to cast to %d\n", cast_type);
+		switch (cast_type)
+		{
+		case VAR_TYPE_FLOAT:
+		case VAR_TYPE_DOUBLE:
+		{
+			double(*call)() = (double(*)())buf;
+			varval_t *vv = se_vv_create(vm, VAR_TYPE_FLOAT);
+			vv->as.flt = (float)call();
+			vv->flags |= VF_FFI;
+			stack_push(vm, vv);
+		} break;
+
+		default:
+		{
+			void*(*call)() = (void*(*)())buf;
+			void *retval;
+			retval = call();
+			varval_t *vv = se_vv_create(vm, VAR_TYPE_INT); //should be fine for x86
+			vv->as.integer = retval;
+			vv->flags |= VF_FFI;
+			stack_push(vm, vv);
+		} break;
+		}
+		--vm->cast_stack_ptr;
+	}
+	else
+	{
+		void*(*call)() = (void*(*)())buf;
+		void *retval;
+		retval = call();
+		varval_t *vv = se_vv_create(vm, VAR_TYPE_INT); //should be fine for x86
+		vv->as.integer = retval;
+		vv->flags |= VF_FFI;
+		stack_push(vm, vv);
+	}
+
+
+	vm_mem_free(vm, ds);
+	//vm_printf("retval=%d\n", retval);
+	//vm_printf("err = %s\n", strerror(errno));
+
+	//se_addint(vm, retval);
+	status = FFI_SUCCESS;
+
+_ffi_end:
+#ifdef _WIN32
+	VirtualFree(buf, 0, MEM_RELEASE);
+#else
+	munmap(jit, page_size);
+#endif
+	return status;
+}
+
 typedef struct
 {
 	int offset;
@@ -3546,6 +4013,7 @@ int vm_library_read_functions(vm_t *vm, vm_ffi_lib_t *l)
 void vm_free(vm_t *vm) {
 	if (!vm)
 		return;
+	vm_unregister_c_ffi_callbacks(vm);
 	vm->thrunner = NULL;
 
 	//int num_vars_left = vector_count(&vm->vars);

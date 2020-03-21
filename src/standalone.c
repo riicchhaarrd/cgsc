@@ -57,7 +57,7 @@ void script_command(const char *cmd)
 void run_script(const char *script)
 {
 	srand(time(0));
-	signal(SIGINT, signal_int);
+	//signal(SIGINT, signal_int);
 	compiler_t compiler;
 	//vm_printf("compiler def\n");
 	compiler_init(&compiler, NULL);
@@ -123,9 +123,9 @@ int main(int argc, char **argv, char **envp)
 	const char *filename = argv[1];
 #else
 	//const char *filename = "../examples/bench.gcx";
-	const char *filename = "C:/Users/R/Desktop/ore/deps/gsc/examples/bench.gsc";
+	const char *filename = "C:\\gsc\\test.gsc";
 #ifdef _WIN32
-	SetCurrentDirectoryA("C:/Users/R/Desktop/ore/deps/gsc/examples/");
+	SetCurrentDirectoryA("C:\\gsc\\");
 #endif
 #endif
 #if 0//#ifdef _WIN32
@@ -138,7 +138,7 @@ int main(int argc, char **argv, char **envp)
 	vm_printf("] Starting benchmark for file '%s'\n", filename);
 #endif
 	srand(time(0));
-	signal(SIGINT, signal_int);
+	//signal(SIGINT, signal_int);
 	compiler_t compiler;
 	compiler_init(&compiler, NULL);
 	compiler_add_source_file(&compiler, filename);
