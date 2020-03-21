@@ -550,26 +550,30 @@ const char *se_vv_to_string(vm_t *vm, varval_t *vv)
 	return p;
 }
 
-float se_getfloat(vm_t *vm, int i) {
+float se_getfloat(vm_t *vm, int i)
+{
 	varval_t *vv = se_argv(vm, i);
 	float ret = (float)vv_cast_double(vm, vv);
 	return ret;
 }
 
-const char *se_getstring(vm_t *vm, int i) {
+const char *se_getstring(vm_t *vm, int i)
+{
 	varval_t *vv = se_argv(vm, i);
 	return se_vv_to_string(vm, vv);
 }
 
-int se_getint(vm_t *vm, int i) {
+int se_getint(vm_t *vm, int i)
+{
 	varval_t *vv = se_argv(vm, i);
 	int ret = se_vv_to_int(vm, vv);
 	return ret;
 }
 
-int se_getfunc(vm_t *vm, int i) {
+vm_function_pointer_handle se_getfunc(vm_t *vm, int i)
+{
 	varval_t *vv = se_argv(vm, i);
-	int ret = se_vv_to_int(vm, vv);
+	vm_function_pointer_handle ret = (vm_function_pointer_handle)se_vv_to_int(vm, vv);
 	return ret;
 }
 
