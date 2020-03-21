@@ -45,7 +45,7 @@ typedef struct
 
 #define VM_MAX_EVENTS (32)
 struct vm_thread_s {
-	char ffi_libname[256];
+	//char ffi_libname[256];
 	size_t stacksize;
 	intptr_t *stack, registers[e_vm_reg_len];
 	int numargs;
@@ -68,8 +68,6 @@ typedef enum
 } e_vm_thread_flags;
 #endif //maybe later, since for now just push to stack
 
-typedef intptr_t vm_function_t;
-
 typedef struct
 {
 	size_t numargs;
@@ -81,9 +79,14 @@ typedef struct
 
 typedef struct
 {
-	void*(*cfunc)();
+	void*(*cfunc)(void);
 	vm_function_t callback;
+	vm_t *vm; //if we're using multiple vms
+	int numargs; //unused for now
+	bool inuse;
 } vm_ffi_callback_t;
+
+#define VM_MAX_FFI_CALLBACKS (64)
 
 typedef struct
 {

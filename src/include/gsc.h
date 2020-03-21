@@ -97,10 +97,9 @@ varval_t *se_argv(vm_t*, int);
 int se_argc(vm_t*);
 #define se_getnumparams(vm) se_argc(vm)
 
-typedef int vm_function_pointer_handle;
-
 int se_getint(vm_t*, int);
-vm_function_pointer_handle se_getfunc(vm_t *vm, int i);
+typedef intptr_t vm_function_t;
+vm_function_t se_getfunc(vm_t *vm, int i);
 float se_getfloat(vm_t*, int);
 const char *se_getstring(vm_t*, int);
 void se_getvector(vm_t*, int, float*);
