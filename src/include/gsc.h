@@ -173,7 +173,7 @@ typedef struct {
 } vt_obj_field_custom_t;
 
 typedef struct {
-	int key;
+	//int key;
 	//int numfields;
 	int internal_size; //maybe later
 	//vt_object_field_t *fields;

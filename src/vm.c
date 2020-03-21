@@ -838,7 +838,7 @@ VM_INLINE bool vv_cast_vector(vm_t *vm, varval_t *vv, vm_vector_t *vec)
 	return success;
 }
 
-VM_INLINE bool stack_pop_vector(vm_t *vm, vm_vector_t *vec)
+static bool stack_pop_vector(vm_t *vm, vm_vector_t *vec)
 {
 	varval_t *vv = (varval_t*)stack_pop(vm);
 	bool b = vv_cast_vector(vm, vv, vec);
@@ -1406,7 +1406,7 @@ int vm_execute(vm_t *vm, int instr) {
 								vm_set_struct_field_value(vm, cs, field, vtb, vv);
 							}
 							else
-								vm_printf("field not found for struct %d!\n", cs->name);
+								vm_printf("field '%s' not found for struct '%s'!\n", str, cs->name);
 						}
 						else
 							vm_printf("cs is NULL! %d\n", vtb->type);
@@ -2058,7 +2058,7 @@ int vm_execute(vm_t *vm, int instr) {
 			stockmethod_t *sm = se_find_method_by_name(vm, self->as.obj->type, method_name);
 
 			if (method_name == NULL || sm == NULL) {
-				vm_printf("built-in method '%s' does not exist! (%d)\n", method_name, method_name_idx);
+				vm_printf("built-in method '%s' does not exist! (%d) [%s, %d]\n", method_name, method_name_idx, VV_TYPE_STRING(self), self->as.obj->type);
 				return E_VM_RET_ERROR;
 			}
 			vm->thrunner->numargs = numargs;
@@ -2642,6 +2642,46 @@ int vm_execute(vm_t *vm, int instr) {
 			//as of now there should always be a threadrunner anyways so
 			stack_push(vm, vm->thrunner->self); //push previous self so we can restore it
 			vm->thrunner->self = self; //set new self to the threadrunner so we can access it easily
+			vm_registers[REG_IP] = jmp_loc;
+		} break;
+
+		case OP_CALL_FUNCTION_POINTER:
+		{
+			//int jmp_loc = read_int(vm);
+			int numargs = read_int(vm);
+
+			for (int i = numargs; i--;) {
+				varval_t *vv = (varval_t*)stack_pop(vm);
+				if (VV_USE_REF(vv))
+					vv->refs++;
+				vm->tmpstack[i] = (intptr_t)vv;
+			}
+			int jmp_loc = stack_pop_int(vm);
+
+			int curpos = vm_registers[REG_IP];
+			stack_push(vm, curpos);
+			//vm_printf("call jmp to %d, returning to %d\n", jmp_loc, curpos);
+
+			stack_push(vm, vm_registers[REG_BP]); //save the previous stack frame bp
+			vm_registers[REG_BP] = vm_registers[REG_SP] + 1;
+
+			memset(&vm_stack[vm_registers[REG_BP]], 0, sizeof(intptr_t) * MAX_LOCAL_VARS);
+
+			for (int i = numargs; i--;)
+				stack_push(vm, vm->tmpstack[numargs - i - 1]);
+
+			//alloc minimum of MAX_LOCAL_VARS values on stack for locals?
+			vm_registers[REG_SP] += MAX_LOCAL_VARS - numargs;
+			stack_push(vm, numargs);
+			if (vm->thrunner) //when calling main from _init or something thrunner may not exist yet
+			{
+				if (VV_USE_REF(vm->thrunner->self))
+					vm->thrunner->self->refs++;
+				stack_push(vm, vm->thrunner->self);
+			}
+			else
+				stack_push(vm, NULL); //self is NULL in this case
+
 			vm_registers[REG_IP] = jmp_loc;
 		} break;
 

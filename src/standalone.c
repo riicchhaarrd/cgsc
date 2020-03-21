@@ -92,6 +92,18 @@ void run_script(const char *script)
 
 int main(int argc, char **argv, char **envp)
 {
+#ifdef _WIN32
+	static bool wsa_init = false;
+	static WSADATA wsaData;
+
+	if (!wsa_init) {
+		if (WSAStartup(MAKEWORD(2, 0), &wsaData) != 0) {
+			vm_printf("wsastartup failed\n");
+			return 0;
+		}
+		wsa_init = true;
+	}
+#endif
 	//SDL_Init(SDL_INIT_VIDEO);
 #ifdef __EMSCRIPTEN__
 	return 0;

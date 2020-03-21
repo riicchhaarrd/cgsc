@@ -847,12 +847,50 @@ static int parser_factor(parser_t *pp) {
 		program_add_opcode(pp, OP_PUSH);
 		program_add_int(pp, pp->integer);
 	}
-	else if (pp_accept(pp, TK_LBRACK)) {
-		if (pp_accept(pp, TK_RBRACK)) {
+	else if (pp_accept(pp, TK_LBRACK))
+	{
+		if (pp_accept(pp, TK_LBRACK))
+		{
+			//function pointer call with return value
+
+			//if (!parser_expression(pp))
+				//return 1;
+			pp_expect(pp, TK_IDENT);
+
+			if (parser_variable(pp, pp->string, true, false, NULL, OP_LOAD))
+				return 1;
+
+			if (parser_process_variable_member_fields(pp, pp->string))
+				return 1;
+
+			//expecting value of type function ptr on stack
+			pp_expect(pp, TK_RBRACK);
+			pp_expect(pp, TK_RBRACK);
+
+			pp_expect(pp, TK_LPAREN);
+			//arguments..
+
+			int numargs = 0;
+
+			if (pp_accept(pp, TK_RPAREN))
+				goto no_args_lolaaa;
+			do {
+				++numargs;
+				if (parser_expression(pp)) //auto pushes
+					return 1;
+			} while (pp_accept(pp, TK_COMMA));
+
+			pp_expect(pp, TK_RPAREN);
+
+		no_args_lolaaa:
+
+			program_add_opcode(pp, OP_CALL_FUNCTION_POINTER);
+			program_add_int(pp, numargs);
+		} else if (pp_accept(pp, TK_RBRACK)) { //empty array
 			program_add_opcode(pp, OP_PUSH_ARRAY);
 			program_add_short(pp, 0);
 		}
-		else {
+		else { //array with initializer values
 			int arr_len = 0;
 			do {
 				++arr_len;
@@ -1840,6 +1878,46 @@ static int parser_statement(parser_t *pp) {
 			return 1;
 
 		program_add_opcode(pp, OP_WAIT);
+		pp_expect(pp, TK_SEMICOLON);
+	}
+	else if (pp_accept(pp, TK_LBRACK))
+	{
+		pp_expect(pp, TK_LBRACK); //[[ func_ptr ]]();
+		//if (!parser_expression(pp))
+			//return 1;
+		pp_expect(pp, TK_IDENT);
+
+		if (parser_variable(pp, pp->string, true, false, NULL, OP_LOAD))
+			return 1;
+
+		if (parser_process_variable_member_fields(pp, pp->string))
+			return 1;
+
+		//expecting value of type function ptr on stack
+		pp_expect(pp, TK_RBRACK);
+		pp_expect(pp, TK_RBRACK);
+
+		pp_expect(pp, TK_LPAREN);
+		//arguments..
+
+		int numargs = 0;
+
+		if (pp_accept(pp, TK_RPAREN))
+			goto no_args_lol;
+		do {
+			++numargs;
+			if (parser_expression(pp)) //auto pushes
+				return 1;
+		} while (pp_accept(pp, TK_COMMA));
+
+		pp_expect(pp, TK_RPAREN);
+
+	no_args_lol:
+
+		program_add_opcode(pp, OP_CALL_FUNCTION_POINTER);
+		program_add_int(pp, numargs);
+		program_add_opcode(pp, OP_POP);
+
 		pp_expect(pp, TK_SEMICOLON);
 	}
 	else if (pp_accept(pp, TK_IF) || pp_accept(pp, TK_WHILE) || pp_accept(pp, TK_R_FOR)) {
