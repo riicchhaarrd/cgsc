@@ -33,6 +33,7 @@
 #else
 
 #include <dlfcn.h>
+#include <sys/mman.h>
 #endif
 
 #include "asm.h"
@@ -3060,7 +3061,7 @@ static void mem_page_free(void *buf)
 #ifdef _WIN32
 	VirtualFree(buf, 0, MEM_RELEASE);
 #else
-	munmap(jit, page_size);
+	munmap(buf, mem_get_page_size());
 #endif
 }
 
@@ -3103,7 +3104,7 @@ static vm_thread_t *vm_request_thread(vm_t *vm)
 }
 
 //expecting a function call of any sort before this, e.g method call, normal func call, function ptr call that's why we pop at end
-static void vm_call_function_pointer_thread(vm_t *vm, vm_thread_t *thr, int jmp_loc, int numargs)
+static int vm_call_function_pointer_thread(vm_t *vm, vm_thread_t *thr, int jmp_loc, int numargs)
 {
 	vm_thread_t *saverunner = vm->thrunner; //save current runner
 
