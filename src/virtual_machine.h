@@ -169,7 +169,7 @@ struct vm_s {
 
 #include <stdio.h> //getchar
 
-VM_INLINE void stack_push(vm_t *vm, intptr_t x) {
+static void stack_push(vm_t *vm, intptr_t x) {
 	if (vm->thrunner == NULL)
 		vm->stack[++vm->registers[REG_SP]] = x;
 	else {
@@ -198,7 +198,7 @@ static void stack_push_vv(vm_t *vm, varval_t *x) {
 	}
 }
 
-VM_INLINE intptr_t stack_get(vm_t *vm, int at) {
+static intptr_t stack_get(vm_t *vm, int at) {
 	if (vm->thrunner == NULL)
 		return vm->stack[vm->registers[REG_SP] - at];
 	return vm->thrunner->stack[vm->thrunner->registers[REG_SP] - at];
@@ -206,13 +206,13 @@ VM_INLINE intptr_t stack_get(vm_t *vm, int at) {
 
 #define stack_current(x) (stack_get(vm,0))
 
-VM_INLINE intptr_t stack_pop(vm_t *vm) {
+static intptr_t stack_pop(vm_t *vm) {
 	if (vm->thrunner == NULL)
 		return vm->stack[vm->registers[REG_SP]--];
 	return vm->thrunner->stack[vm->thrunner->registers[REG_SP]--];
 }
 
-VM_INLINE varval_t *stack_pop_vv(vm_t *vm) {
+static varval_t *stack_pop_vv(vm_t *vm) {
 	return (varval_t*)stack_pop(vm);
 }
 

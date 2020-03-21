@@ -838,7 +838,7 @@ VM_INLINE bool vv_cast_vector(vm_t *vm, varval_t *vv, vm_vector_t *vec)
 	return success;
 }
 
-VM_INLINE bool stack_pop_vector(vm_t *vm, vm_vector_t *vec)
+static bool stack_pop_vector(vm_t *vm, vm_vector_t *vec)
 {
 	varval_t *vv = (varval_t*)stack_pop(vm);
 	bool b = vv_cast_vector(vm, vv, vec);
