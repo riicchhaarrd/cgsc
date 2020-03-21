@@ -21,6 +21,7 @@
 #include <dlfcn.h>
 #include <sys/mman.h>
 #endif
+#include <signal.h>
 #include "parser.h"
 #include "dynstring.h"
 //#pragma comment(lib, "SDL2.lib")
@@ -689,6 +690,46 @@ int sf_is_dir(vm_t *vm)
 	return 1;
 }
 
+typedef struct
+{
+	const char *name;
+	int id;
+} signal_map_value_t;
+
+bool vm_register_c_ffi_callback(vm_t *vm, char *cfunc, int numargs);
+char *ffi_create_c_callback(vm_t *vm, vm_function_t fp, size_t numargs);
+
+static int sf_set_signal_handler(vm_t *vm)
+{
+	static const signal_map_value_t map[] = {
+		{"int", SIGINT},
+		{"ill", SIGILL},
+		{"fpe", SIGFPE},
+		{"segv", SIGSEGV},
+		{"term", SIGTERM},
+		{"break", SIGBREAK},
+		{"abrt", SIGABRT},
+		{0,0}
+	};
+	const char *name = se_getstring(vm, 0);
+	vm_function_t fp = se_getfunc(vm, 1);
+	for (signal_map_value_t *p = map; p->name; p++)
+	{
+		if (!strcmp(p->name, name))
+		{
+			printf("signal registered %d %s, %d\n", p->id, name, fp);
+			char *cfunc = ffi_create_c_callback(vm, fp, 1);
+			//printf("created cfunc %02X for %d\n", cfunc, arg->as.integer);
+			vm_register_c_ffi_callback(vm, cfunc, 1); //1 signal
+			signal(p->id, cfunc);
+			se_addbool(vm, true);
+			return 1;
+		}
+	}
+	se_addbool(vm, false);
+	return 1;
+}
+
 stockmethod_t std_scriptmethods[] = {
 	{"testabc", sm_test},
 	{NULL,0}
@@ -710,6 +751,7 @@ stockfunction_t std_scriptfunctions[] = {
 	{"is_dir", sf_is_dir},
 	{"is_file", sf_is_dir},
 	{ "buffer", sf_buffer },
+	{ "set_signal_handler", sf_set_signal_handler },
 	{ "int",sf_int },
 	{ "float",sf_float },
 	{"string",sf_string},
