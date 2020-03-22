@@ -211,6 +211,7 @@ typedef union {
 	int index; //more generic
 	int stringindex;
 	vm_scalar_t vec[3]; //largest imo
+	intptr_t ivec[3];
 } varval_internal_representation_t;
 
 struct varval_s {

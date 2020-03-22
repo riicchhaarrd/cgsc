@@ -73,6 +73,7 @@ typedef enum {
 
 	TK_BACKSLASH,
 	TK_TYPEDEF,
+	TK_STDCALL,
 	TK_STRUCT,
 	TK_KEYWORD_START,
 	TK_KEYWORD_UNSIGNED = TK_KEYWORD_START,
@@ -165,7 +166,7 @@ const static char *lex_token_strings[] = {
 	"TK_DOT",
 	"TK_NOT",
 	"TK_BACKSLASH",
-	"TYPEDEF","STRUCT",
+	"TYPEDEF","STDCALL","STRUCT",
 	0,0,0,0,0,0,0,
 	"TK_SHARP",
 	"TK_NEWLINE",

@@ -1159,9 +1159,13 @@ int vm_execute(vm_t *vm, int instr) {
 		} break;
 
 		case OP_PUSH_FUNCTION_POINTER: {
+			int flags = read_int(vm);
+			int numargs = read_int(vm);
 			int i = read_int(vm);
 			varval_t *vv = se_vv_create(vm, VAR_TYPE_FUNCTION_POINTER);
-			vv->as.integer = i;
+			vv->as.ivec[0] = i;
+			vv->as.ivec[1] = numargs;
+			vv->as.ivec[2] = flags;
 			stack_push_vv(vm, vv);
 		} break;
 
@@ -3189,19 +3193,19 @@ static int vm_call_function_pointer_thread(vm_t *vm, vm_thread_t *thr, int jmp_l
 	return retval;
 }
 
-static intptr_t _simple_ffi_callback(vm_t *vm, vm_function_t fp, size_t n, intptr_t retptr, ...)
+static intptr_t _simple_ffi_callback(vm_t *vm, vm_function_t fp, size_t n, ...)
 {
 	//printf("_simple_ffi_callback(fp=%d,vm=%02X)\n", fp, vm);
 	va_list va;
-	va_start(va, retptr);
-	printf("vm=%d,fp=%d,retptr=%d\n", vm, fp, retptr);
+	va_start(va, n);
+	//printf("vm=%d,fp=%d,n=%d\n", vm, fp, n);
 	vm_thread_t *saverunner = vm->thrunner;
 	vm->thrunner = NULL;
 	for (size_t i = 0; i < n; ++i)
 	{
 		intptr_t val = va_arg(va, intptr_t);
 		se_addint(vm, val);
-		printf("val = %d %02X\n", val, val);
+		//printf("val = %d %02X\n", val, val);
 	}
 	vm_thread_t *new_thr = vm_request_thread(vm);
 	intptr_t retval = vm_call_function_pointer_thread(vm, new_thr, fp, n);
@@ -3211,7 +3215,7 @@ static intptr_t _simple_ffi_callback(vm_t *vm, vm_function_t fp, size_t n, intpt
 	return retval;
 }
 
-char *ffi_create_c_callback(vm_t *vm, vm_function_t fp, size_t numargs)
+char *ffi_create_c_callback(vm_t *vm, vm_function_t fp, size_t numargs, int flags)
 {
 	char *mem = mem_page_alloc();
 	intptr_t *addr = (intptr_t*)(mem + 100); //should be fine for now, we don't have 100 opcodes here yet
@@ -3222,11 +3226,13 @@ char *ffi_create_c_callback(vm_t *vm, vm_function_t fp, size_t numargs)
 	push(&ptr, REG_EBP);
 	mov(&ptr, REG_EBP, REG_ESP);
 #if 1
-	
 	//push dword ptr [ebp+8] //1st local arg
-	emit(&ptr, 0xff);
-	emit(&ptr, 0x75);
-	emit(&ptr, 0x08);
+	for (size_t i = 0; i < numargs; ++i)
+	{
+		emit(&ptr, 0xff);
+		emit(&ptr, 0x75);
+		emit(&ptr, ((numargs-1) * 4) - (i*4) + 0x08);
+	}
 #endif
 
 	push_imm(&ptr, numargs);
@@ -3245,8 +3251,10 @@ char *ffi_create_c_callback(vm_t *vm, vm_function_t fp, size_t numargs)
 #endif
 
 	emit(&ptr, 0xc9); //leave
-	//ret(&ptr, 0);
-	ret(&ptr, numargs * sizeof(int));
+	if(flags == 0)
+		ret(&ptr, 0);
+	else
+		ret(&ptr, numargs * sizeof(int));
 	/* for stdcall we clean up the args */
 	return mem;
 }
@@ -3261,7 +3269,7 @@ void vm_unregister_c_ffi_callbacks(vm_t *vm)
 	}
 }
 
-bool vm_register_c_ffi_callback(vm_t *vm, char *cfunc, int numargs)
+bool vm_register_c_ffi_callback(vm_t *vm, char *cfunc, int numargs, int flags)
 {
 	for (int i = 0; i < VM_MAX_FFI_CALLBACKS; ++i)
 	{
@@ -3274,6 +3282,7 @@ bool vm_register_c_ffi_callback(vm_t *vm, char *cfunc, int numargs)
 			cb->inuse = true;
 			cb->numargs = numargs;
 			cb->vm = vm;
+			cb->flags = flags;
 			return true;
 		}
 	}
@@ -3431,9 +3440,9 @@ int vm_do_ffi(vm_t *vm, vm_ffi_lib_func_t *lf)
 				else if (VV_TYPE(arg) == VAR_TYPE_FUNCTION_POINTER)
 				{
 					//register it in the global map
-					char *cfunc = ffi_create_c_callback(vm, arg->as.integer, 2);
+					char *cfunc = ffi_create_c_callback(vm, arg->as.integer, arg->as.ivec[1], arg->as.ivec[2]);
 					//printf("created cfunc %02X for %d\n", cfunc, arg->as.integer);
-					vm_register_c_ffi_callback(vm, cfunc, 2);
+					vm_register_c_ffi_callback(vm, cfunc, arg->as.ivec[1], arg->as.ivec[2]);
 					push_imm(&jit, cfunc);
 				}
 				else
@@ -3713,6 +3722,10 @@ static int vm_read_functions(vm_t *vm, unsigned int program) {
 	for (int i = 0; i < num_funcs; i++) {
 		int loc = *(int*)(prog->data + at);
 		at += sizeof(int);
+		int numargs = *(int*)(prog->data + at);
+		at += sizeof(int);
+		int flags = *(int*)(prog->data + at);
+		at += sizeof(int);
 
 
 		id_len = 0;
@@ -3724,7 +3737,8 @@ static int vm_read_functions(vm_t *vm, unsigned int program) {
 
 		vm_function_info_t *fi = (vm_function_info_t*)vm_mem_alloc(vm, sizeof(vm_function_info_t));
 		fi->program = program;
-
+		fi->numargs = numargs;
+		fi->flags = flags;
 		//fi->numlocalvars = *(uint16_t*)(vm->program + at);
 		//at += sizeof(uint16_t);
 

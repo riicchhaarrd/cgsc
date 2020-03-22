@@ -696,8 +696,8 @@ typedef struct
 	int id;
 } signal_map_value_t;
 
-bool vm_register_c_ffi_callback(vm_t *vm, char *cfunc, int numargs);
-char *ffi_create_c_callback(vm_t *vm, vm_function_t fp, size_t numargs);
+bool vm_register_c_ffi_callback(vm_t *vm, char *cfunc, int numargs, int flags);
+char *ffi_create_c_callback(vm_t *vm, vm_function_t fp, size_t numargs, int flags);
 
 static int sf_set_signal_handler(vm_t *vm)
 {
@@ -717,10 +717,10 @@ static int sf_set_signal_handler(vm_t *vm)
 	{
 		if (!strcmp(p->name, name))
 		{
-			printf("signal registered %d %s, %d\n", p->id, name, fp);
-			char *cfunc = ffi_create_c_callback(vm, fp, 1);
+			//printf("signal registered %d %s, %d\n", p->id, name, fp);
+			char *cfunc = ffi_create_c_callback(vm, fp, 1, 0);
 			//printf("created cfunc %02X for %d\n", cfunc, arg->as.integer);
-			vm_register_c_ffi_callback(vm, cfunc, 1); //1 signal
+			vm_register_c_ffi_callback(vm, cfunc, 1, 0); //1 signal
 			signal(p->id, cfunc);
 			se_addbool(vm, true);
 			return 1;
