@@ -283,6 +283,24 @@ int vm_set_struct_field_value(vm_t *vm, cstruct_t *cs, cstructfield_t *field, vt
 		vm_printf("expression must be a modifiable lvalue\n");
 		return 0;
 	}
+
+	if (VV_TYPE(vv) == VAR_TYPE_FUNCTION_POINTER)
+	{
+		if (field->type != CTYPE_INT && field->type != CTYPE_POINTER && field->type != CTYPE_LONG)
+		{
+			se_error(vm, "trying to set function ptr on unhandled field type");
+			return 0;
+		}
+
+		char *ffi_create_c_callback(vm_t *vm, vm_function_t fp, size_t numargs, int flags);
+		bool vm_register_c_ffi_callback(vm_t *vm, char *cfunc, int numargs, int flags);
+
+		intptr_t *p = (intptr_t*)&vtb->data[field->offset];
+		char *cfunc = ffi_create_c_callback(vm, vv->as.integer, vv->as.ivec[1], vv->as.ivec[2]);
+		vm_register_c_ffi_callback(vm, cfunc, vv->as.ivec[1], vv->as.ivec[2]);
+		*p = cfunc;
+		return 1;
+	}
 	switch (field->type)
 	{
 	case CTYPE_CHAR: {
