@@ -3194,14 +3194,14 @@ static intptr_t _simple_ffi_callback(vm_t *vm, vm_function_t fp, size_t n, intpt
 	//printf("_simple_ffi_callback(fp=%d,vm=%02X)\n", fp, vm);
 	va_list va;
 	va_start(va, retptr);
-	//printf("vm=%d,fp=%d\n", vm, fp);
+	printf("vm=%d,fp=%d,retptr=%d\n", vm, fp, retptr);
 	vm_thread_t *saverunner = vm->thrunner;
 	vm->thrunner = NULL;
 	for (size_t i = 0; i < n; ++i)
 	{
 		intptr_t val = va_arg(va, intptr_t);
 		se_addint(vm, val);
-		//printf("val = %d %02X\n", val, val);
+		printf("val = %d %02X\n", val, val);
 	}
 	vm_thread_t *new_thr = vm_request_thread(vm);
 	intptr_t retval = vm_call_function_pointer_thread(vm, new_thr, fp, n);
@@ -3218,9 +3218,17 @@ char *ffi_create_c_callback(vm_t *vm, vm_function_t fp, size_t numargs)
 	*addr = (intptr_t)_simple_ffi_callback;
 	char *ptr = mem;
 	//emit(&ptr, 0xcc); //__asm int 3
+
+	push(&ptr, REG_EBP);
+	mov(&ptr, REG_EBP, REG_ESP);
+#if 1
 	
-	//push(&ptr, REG_EBP);
-	//mov(&ptr, REG_EBP, REG_ESP);
+	//push dword ptr [ebp+8] //1st local arg
+	emit(&ptr, 0xff);
+	emit(&ptr, 0x75);
+	emit(&ptr, 0x08);
+#endif
+
 	push_imm(&ptr, numargs);
 	push_imm(&ptr, fp);
 	push_imm(&ptr, vm);
@@ -3230,13 +3238,16 @@ char *ffi_create_c_callback(vm_t *vm, vm_function_t fp, size_t numargs)
 	dd(&ptr, addr);
 	//emit(&ptr, 0x50);
 
-#if 1
+#if 0 // we don't clean up cdecl
 	emit(&ptr, 0x83);
 	emit(&ptr, 0xc4);
 	emit(&ptr, sizeof(int) * 3); //vm,fp,numargs (3)
 #endif
-	//emit(&ptr, 0xc9); //leave
-	ret(&ptr, 0);
+
+	emit(&ptr, 0xc9); //leave
+	//ret(&ptr, 0);
+	ret(&ptr, numargs * sizeof(int));
+	/* for stdcall we clean up the args */
 	return mem;
 }
 
@@ -3420,9 +3431,9 @@ int vm_do_ffi(vm_t *vm, vm_ffi_lib_func_t *lf)
 				else if (VV_TYPE(arg) == VAR_TYPE_FUNCTION_POINTER)
 				{
 					//register it in the global map
-					char *cfunc = ffi_create_c_callback(vm, arg->as.integer, 3);
+					char *cfunc = ffi_create_c_callback(vm, arg->as.integer, 2);
 					//printf("created cfunc %02X for %d\n", cfunc, arg->as.integer);
-					vm_register_c_ffi_callback(vm, cfunc, 3);
+					vm_register_c_ffi_callback(vm, cfunc, 2);
 					push_imm(&jit, cfunc);
 				}
 				else
