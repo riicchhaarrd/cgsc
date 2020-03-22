@@ -707,7 +707,9 @@ static int sf_set_signal_handler(vm_t *vm)
 		{"fpe", SIGFPE},
 		{"segv", SIGSEGV},
 		{"term", SIGTERM},
+#ifdef _WIN32 //only on windows
 		{"break", SIGBREAK},
+#endif
 		{"abrt", SIGABRT},
 		{0,0}
 	};
