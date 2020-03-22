@@ -100,6 +100,8 @@ vm_long_t vv_cast_long(vm_t *vm, varval_t *vv)
 {
 	switch (VV_TYPE(vv))
 	{
+	case VAR_TYPE_NULL:
+		return 0;
 	case VAR_TYPE_INT:
 		return (vm_long_t)vv->as.integer;
 	case VAR_TYPE_CHAR:
@@ -1157,9 +1159,13 @@ int vm_execute(vm_t *vm, int instr) {
 		} break;
 
 		case OP_PUSH_FUNCTION_POINTER: {
+			int flags = read_int(vm);
+			int numargs = read_int(vm);
 			int i = read_int(vm);
 			varval_t *vv = se_vv_create(vm, VAR_TYPE_FUNCTION_POINTER);
-			vv->as.integer = i;
+			vv->as.ivec[0] = i;
+			vv->as.ivec[1] = numargs;
+			vv->as.ivec[2] = flags;
 			stack_push_vv(vm, vv);
 		} break;
 
@@ -3106,6 +3112,14 @@ static vm_thread_t *vm_request_thread(vm_t *vm)
 //expecting a function call of any sort before this, e.g method call, normal func call, function ptr call that's why we pop at end
 static int vm_call_function_pointer_thread(vm_t *vm, vm_thread_t *thr, int jmp_loc, int numargs)
 {
+	intptr_t retval = 0;
+
+	for (int i = numargs; i--;) {
+		varval_t *vv = (varval_t*)stack_pop(vm);
+		if (VV_USE_REF(vv))
+			vv->refs++;
+		vm->tmpstack[i] = (intptr_t)vv;
+	}
 	vm_thread_t *saverunner = vm->thrunner; //save current runner
 
 	vm->thrunner = thr;
@@ -3152,8 +3166,22 @@ static int vm_call_function_pointer_thread(vm_t *vm, vm_thread_t *thr, int jmp_l
 	}
 	END_PERF(run_thread);
 
-	if (!vm_thread_is_stalled(vm, thr)) {
-		vm_execute(vm, OP_POP); //retval
+	if (!vm_thread_is_stalled(vm, thr))
+	{
+		varval_t *retvv = (varval_t*)stack_pop(vm);
+		if (VV_IS_STRING(retvv))
+		{
+			retval = se_vv_to_string(vm, retvv);
+		}
+		else
+		{
+			retval = vv_cast_long(vm, retvv);
+		}
+
+		se_vv_free(vm, retvv);
+
+
+		//vm_execute(vm, OP_POP); //retval
 		thr->active = false;
 		--vm->numthreadrunners;
 		vm_thread_reset_events(vm, thr); //should kind of already have no events, otherwise we wouldn't end up here mhm?
@@ -3162,40 +3190,72 @@ static int vm_call_function_pointer_thread(vm_t *vm, vm_thread_t *thr, int jmp_l
 	END_PERF(start)
 
 	vm->thrunner = saverunner; //restore prev thread
+	return retval;
 }
 
-static void _simple_ffi_callback(vm_function_t fp, vm_t *vm)
+static intptr_t _simple_ffi_callback(vm_t *vm, vm_function_t fp, size_t n, ...)
 {
 	//printf("_simple_ffi_callback(fp=%d,vm=%02X)\n", fp, vm);
-
+	va_list va;
+	va_start(va, n);
+	//printf("vm=%d,fp=%d,n=%d\n", vm, fp, n);
+	vm_thread_t *saverunner = vm->thrunner;
+	vm->thrunner = NULL;
+	for (size_t i = 0; i < n; ++i)
+	{
+		intptr_t val = va_arg(va, intptr_t);
+		se_addint(vm, val);
+		//printf("val = %d %02X\n", val, val);
+	}
 	vm_thread_t *new_thr = vm_request_thread(vm);
-	vm_call_function_pointer_thread(vm, new_thr, fp, 0);
+	intptr_t retval = vm_call_function_pointer_thread(vm, new_thr, fp, n);
+	vm->thrunner = saverunner;
+
+	va_end(va);
+	return retval;
 }
 
-static char *ffi_create_c_callback(vm_t *vm, vm_function_t fp)
+char *ffi_create_c_callback(vm_t *vm, vm_function_t fp, size_t numargs, int flags)
 {
 	char *mem = mem_page_alloc();
 	intptr_t *addr = (intptr_t*)(mem + 100); //should be fine for now, we don't have 100 opcodes here yet
 	*addr = (intptr_t)_simple_ffi_callback;
 	char *ptr = mem;
 	//emit(&ptr, 0xcc); //__asm int 3
-	
+
 	push(&ptr, REG_EBP);
 	mov(&ptr, REG_EBP, REG_ESP);
+#if 1
+	//push dword ptr [ebp+8] //1st local arg
+	for (size_t i = 0; i < numargs; ++i)
+	{
+		emit(&ptr, 0xff);
+		emit(&ptr, 0x75);
+		emit(&ptr, ((numargs-1) * 4) - (i*4) + 0x08);
+	}
+#endif
 
-	push_imm(&ptr, vm);
+	push_imm(&ptr, numargs);
 	push_imm(&ptr, fp);
+	push_imm(&ptr, vm);
 
 	emit(&ptr, 0xff);
 	emit(&ptr, 0x15);
 	dd(&ptr, addr);
-#if 0
+	//emit(&ptr, 0x50);
+
+#if 0 // we don't clean up cdecl
 	emit(&ptr, 0x83);
 	emit(&ptr, 0xc4);
-	emit(&ptr, 8);
+	emit(&ptr, sizeof(int) * 3); //vm,fp,numargs (3)
 #endif
+
 	emit(&ptr, 0xc9); //leave
-	ret(&ptr, 0);
+	if(flags == 0)
+		ret(&ptr, 0);
+	else
+		ret(&ptr, numargs * sizeof(int));
+	/* for stdcall we clean up the args */
 	return mem;
 }
 
@@ -3209,7 +3269,7 @@ void vm_unregister_c_ffi_callbacks(vm_t *vm)
 	}
 }
 
-bool vm_register_c_ffi_callback(vm_t *vm, char *cfunc)
+bool vm_register_c_ffi_callback(vm_t *vm, char *cfunc, int numargs, int flags)
 {
 	for (int i = 0; i < VM_MAX_FFI_CALLBACKS; ++i)
 	{
@@ -3220,8 +3280,9 @@ bool vm_register_c_ffi_callback(vm_t *vm, char *cfunc)
 			//cb->callback = fp;
 			cb->cfunc = cfunc;
 			cb->inuse = true;
-			cb->numargs = 0;
+			cb->numargs = numargs;
 			cb->vm = vm;
+			cb->flags = flags;
 			return true;
 		}
 	}
@@ -3379,9 +3440,9 @@ int vm_do_ffi(vm_t *vm, vm_ffi_lib_func_t *lf)
 				else if (VV_TYPE(arg) == VAR_TYPE_FUNCTION_POINTER)
 				{
 					//register it in the global map
-					char *cfunc = ffi_create_c_callback(vm, arg->as.integer);
+					char *cfunc = ffi_create_c_callback(vm, arg->as.integer, arg->as.ivec[1], arg->as.ivec[2]);
 					//printf("created cfunc %02X for %d\n", cfunc, arg->as.integer);
-					vm_register_c_ffi_callback(vm, cfunc);
+					vm_register_c_ffi_callback(vm, cfunc, arg->as.ivec[1], arg->as.ivec[2]);
 					push_imm(&jit, cfunc);
 				}
 				else
@@ -3661,6 +3722,10 @@ static int vm_read_functions(vm_t *vm, unsigned int program) {
 	for (int i = 0; i < num_funcs; i++) {
 		int loc = *(int*)(prog->data + at);
 		at += sizeof(int);
+		int numargs = *(int*)(prog->data + at);
+		at += sizeof(int);
+		int flags = *(int*)(prog->data + at);
+		at += sizeof(int);
 
 
 		id_len = 0;
@@ -3672,7 +3737,8 @@ static int vm_read_functions(vm_t *vm, unsigned int program) {
 
 		vm_function_info_t *fi = (vm_function_info_t*)vm_mem_alloc(vm, sizeof(vm_function_info_t));
 		fi->program = program;
-
+		fi->numargs = numargs;
+		fi->flags = flags;
 		//fi->numlocalvars = *(uint16_t*)(vm->program + at);
 		//at += sizeof(uint16_t);
 

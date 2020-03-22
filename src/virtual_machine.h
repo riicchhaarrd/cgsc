@@ -7,7 +7,8 @@
 #include "dynarray.h"
 #include "dynstack.h"
 
-#define VM_STACK_SIZE (65000)
+//#define VM_STACK_SIZE (65000)
+#define VM_STACK_SIZE (1024 * 1024 * 5)
 
 typedef enum {
 	REG_A,
@@ -30,6 +31,8 @@ static const char *e_vm_reg_names[] = {
 typedef struct {
 	char name[256];
 	int position;
+	int numargs;
+	int flags;
 	unsigned int program;
 } vm_function_info_t;
 
@@ -84,6 +87,7 @@ typedef struct
 	vm_t *vm; //if we're using multiple vms
 	int numargs; //unused for now
 	bool inuse;
+	int flags;
 } vm_ffi_callback_t;
 
 #define VM_MAX_FFI_CALLBACKS (64)

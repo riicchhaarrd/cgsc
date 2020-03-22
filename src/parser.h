@@ -6,6 +6,8 @@
 typedef struct {
 	int original_loc, assigned_loc;
 	int size;
+	int flags;
+	size_t numargs;
 #define MAX_CODE_SEGMENT_DEPENDS 1024
 	int relocations[MAX_CODE_SEGMENT_DEPENDS];
 	int relocation_size;
@@ -90,7 +92,10 @@ typedef struct {
 	FILE *logfile;
 
 	int last_opcode_index;
+	int internalflags;
 } parser_t;
+
+#define PARSER_IFLAG_STDCALL (1<<0)
 
 #define SCOPE_POP(pp) pp->scopestack[--pp->ssp]
 #define SCOPE_PUSH(pp, v) pp->scopestack[pp->ssp++] = v

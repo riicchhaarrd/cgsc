@@ -176,7 +176,7 @@ break_out:
 
 static bool is_ident_char(int c)
 {
-	return (isalnum(c) || c == '$' || c == '_');
+	return (isalnum(c) || c == '$' || c == '_' || c == '@');
 }
 
 static bool pp_is_token_enabled(parser_t *pp, int t) {
@@ -210,6 +210,8 @@ static int parser_read_identifier(parser_t *pp) {
 		return TK_IF;
 	else if (!strcmp(pp->string, "typedef"))
 		return TK_TYPEDEF;
+	else if (!strcmp(pp->string, "__stdcall"))
+		return TK_STDCALL;
 	else if (!strcmp(pp->string, "struct"))
 		return TK_STRUCT;
 	else if (!strcmp(pp->string, "push"))
@@ -810,6 +812,8 @@ static int parser_factor(parser_t *pp) {
 				found = true;
 				program_add_opcode(pp, OP_PUSH_FUNCTION_POINTER);
 				pp->current_segment->relocations[pp->current_segment->relocation_size++] = pp->program_counter;
+				program_add_int(pp, seg->flags);
+				program_add_int(pp, seg->numargs);
 				program_add_int(pp, seg->original_loc);
 				break;
 			}
@@ -1712,6 +1716,13 @@ accept_ident:
 						pp->main_segment = pp->code_segment_size + 1;
 
 					pp->current_segment = &pp->code_segments[++pp->code_segment_size];
+					pp->current_segment->numargs = numargs;
+					pp->current_segment->flags = 0;
+					if (pp->internalflags & PARSER_IFLAG_STDCALL)
+					{
+						pp->current_segment->flags |= PARSER_IFLAG_STDCALL;
+						pp->internalflags &= ~PARSER_IFLAG_STDCALL;
+					}
 					pp->current_segment->original_loc = pp->program_counter;
 					if(pp->logfile)
 						fprintf(pp->logfile, "[%s]\n", id);
@@ -1725,12 +1736,11 @@ accept_ident:
 						vm_printf("BLOCK=%d,curpos=%d,at=%d\n", block, start, end);
 						return block;
 					}
-
+					//printf("nargs=%d\n", numargs);
 					parser_clear_local_variables(pp);
 
 					program_add_opcode(pp, OP_PUSH_NULL);
 					program_add_opcode(pp, OP_RET);
-
 					pp->current_segment->size = pp->program_counter - pp->current_segment->original_loc;
 				}
 			}
@@ -1843,7 +1853,17 @@ static int parser_statement(parser_t *pp) {
 	dynarray structs;
 
 	int np;
-	if (pp_accept(pp, TK_EOF)) {
+	if (pp_accept(pp, TK_STDCALL))
+	{
+		pp_save(pp);
+		if (!pp_accept(pp, TK_IDENT) && !pp_accept(pp,TK_LPAREN))
+		{
+			vm_printf("expected function definition\n");
+			return 1;
+		}
+		pp->internalflags |= PARSER_IFLAG_STDCALL;
+		pp_restore(pp);
+	} else if (pp_accept(pp, TK_EOF)) {
 		return 1;
 	}
 	else if (pp_accept(pp, TK_TYPEDEF)) {
@@ -2804,7 +2824,7 @@ int compiler_execute(compiler_t *c)
 
 	for (int i = 0; i <= pp->code_segment_size; i++) {
 		code_segment_t *seg = &pp->code_segments[i];
-		total_size += seg->size + strlen(seg->id) + 1 + sizeof(int);
+		total_size += seg->size + strlen(seg->id) + 1 + sizeof(int) + sizeof(int) + sizeof(int); //added numargs & flags
 	}
 
 	scr_istring_t *istr = NULL;
@@ -2894,6 +2914,10 @@ int compiler_execute(compiler_t *c)
 		code_segment_t *seg = &pp->code_segments[i];
 
 		*(int*)(rearranged_program + rearranged_program_pc) = seg->new_location;
+		rearranged_program_pc += sizeof(int);
+		*(int*)(rearranged_program + rearranged_program_pc) = seg->numargs;
+		rearranged_program_pc += sizeof(int);
+		*(int*)(rearranged_program + rearranged_program_pc) = seg->flags;
 		rearranged_program_pc += sizeof(int);
 		memcpy(rearranged_program + rearranged_program_pc, seg->id, strlen(seg->id) + 1);
 		rearranged_program_pc += strlen(seg->id) + 1;
