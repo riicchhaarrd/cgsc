@@ -41,6 +41,7 @@ VM_INLINE bool VV_IS_INTEGRAL(varval_t *vv)
 	return true;
 }
 #define VV_IS_POINTER(x) (x != NULL && (x->flags & VF_POINTER) == VF_POINTER)
+#define VV_IS_FFI(x) (x != NULL && (x->flags & VF_FFI) == VF_FFI)
 #define VV_IS_UNSIGNED(x) (x && (x->flags & VF_UNSIGNED) == VF_UNSIGNED)
 
 typedef long long vm_long_t;

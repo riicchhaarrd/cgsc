@@ -222,10 +222,12 @@ cstructfield_t *vm_get_struct_field(vm_t *vm, cstruct_t *cs, const char *s)
 	return NULL;
 }
 
-varval_t *se_vv_create_with_ffi_flags(vm_t *vm, int type)
+/* as of now there's no vector being used (3x float), so we can just use the ivec[1] and ivec[2] to store extra information */
+varval_t *se_vv_create_with_ffi_flags(vm_t *vm, int type, void *p)
 {
 	varval_t *vv = se_vv_create(vm, type);
 	vv->flags |= VF_FFI;
+	vv->as.ivec[2] = p;
 	return vv;
 }
 
@@ -237,7 +239,7 @@ varval_t *vm_get_struct_field_value(vm_t *vm, cstruct_t *cs, cstructfield_t *fie
 
 	if (CTYPE_IS_ARRAY(field->type))
 	{
-		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_LONG);
+		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_LONG, p);
 		vv->as.ptr = p;
 		return vv;
 	}
@@ -245,31 +247,31 @@ varval_t *vm_get_struct_field_value(vm_t *vm, cstruct_t *cs, cstructfield_t *fie
 	switch (field->type)
 	{
 	case CTYPE_CHAR:
-		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_CHAR);
+		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_CHAR, p);
 		vv->as.character = *(char*)p;
 		return vv;
 	case CTYPE_SHORT:
-		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_SHORT);
+		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_SHORT, p);
 		vv->as.shortint = *(short*)p;
 		return vv;
 	case CTYPE_INT:
-		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_INT);
+		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_INT, p);
 		vv->as.integer = *(int*)p;
 		return vv;
 	case CTYPE_LONG:
-		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_LONG);
+		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_LONG, p);
 		vv->as.longint = *(vm_long_t*)p;
 		return vv;
 	case CTYPE_POINTER:
-		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_LONG); //TODO fix this perhaps but should be fine for the next X years unless sizeof(void*) changes, besides i need to fix ffi x64 first anyways
+		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_LONG, p); //TODO fix this perhaps but should be fine for the next X years unless sizeof(void*) changes, besides i need to fix ffi x64 first anyways
 		vv->as.ptr = *(void**)p; //key difference between array and ptr
 		return vv;
 	case CTYPE_FLOAT:
-		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_FLOAT);
+		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_FLOAT, p);
 		vv->as.flt = *(float*)p;
 		return vv;
 	case CTYPE_DOUBLE:
-		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_DOUBLE);
+		vv = se_vv_create_with_ffi_flags(vm, VAR_TYPE_DOUBLE, p);
 		vv->as.dbl = *(double*)p;
 		return vv;
 	}
@@ -282,6 +284,24 @@ int vm_set_struct_field_value(vm_t *vm, cstruct_t *cs, cstructfield_t *field, vt
 	{
 		vm_printf("expression must be a modifiable lvalue\n");
 		return 0;
+	}
+
+	if (VV_TYPE(vv) == VAR_TYPE_FUNCTION_POINTER)
+	{
+		if (field->type != CTYPE_INT && field->type != CTYPE_POINTER && field->type != CTYPE_LONG)
+		{
+			se_error(vm, "trying to set function ptr on unhandled field type");
+			return 0;
+		}
+
+		char *ffi_create_c_callback(vm_t *vm, vm_function_t fp, size_t numargs, int flags);
+		bool vm_register_c_ffi_callback(vm_t *vm, char *cfunc, int numargs, int flags);
+
+		intptr_t *p = (intptr_t*)&vtb->data[field->offset];
+		char *cfunc = ffi_create_c_callback(vm, vv->as.integer, vv->as.ivec[1], vv->as.ivec[2]);
+		vm_register_c_ffi_callback(vm, cfunc, vv->as.ivec[1], vv->as.ivec[2]);
+		*p = cfunc;
+		return 1;
 	}
 	switch (field->type)
 	{
@@ -3419,7 +3439,12 @@ int vm_do_ffi(vm_t *vm, vm_ffi_lib_func_t *lf)
 			if (VV_IS_POINTER(arg))
 			{
 				varval_t *val = (varval_t*)arg->as.ptr;
-				push_imm(&jit, &val->as);
+				if (VV_IS_FFI(val))
+				{
+					void *p = (void*)val->as.ivec[2];
+					push_imm(&jit, p);
+				} else
+					push_imm(&jit, &val->as);
 			}
 			else if (VV_IS_STRING(arg))
 				push_imm(&jit, se_vv_to_string(vm, arg));
