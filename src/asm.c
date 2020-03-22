@@ -35,14 +35,20 @@ void dec(u8 **p, x86_register_t reg)
 	emit(p, reg + 0x48);
 }
 
+void push_imm8(u8 **p, u8 imm)
+{
+	emit(p, 0x6a);
+	emit(p, imm & 0xff);
+}
+
 void push_imm(u8 **p, u32 imm)
 {
-	if (imm <= 0xff)
+	/*if (imm <= 0xff)
 	{
 		emit(p, 0x6a);
 		emit(p, imm & 0xff);
 	}
-	else {
+	else */{
 		emit(p, 0x68);
 		dd(p, imm);
 	}
