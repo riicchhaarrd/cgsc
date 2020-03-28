@@ -194,7 +194,10 @@ static int parser_read_identifier(parser_t *pp) {
 	pp->stringindex = 0;
 	--pp->curpos;
 	int ch;
-	while (is_ident_char((ch = next))) {
+	while (
+		is_ident_char((ch = next))
+		)
+	{
 		if (!parser_append_to_parse_string(pp, ch))
 			break;
 	}

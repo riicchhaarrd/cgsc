@@ -424,6 +424,74 @@ static void obj_file_deconstructor(vm_t *vm, FILE *fp) {
 		fclose(fp);
 }
 
+varval_t *create_object_buffer_value(vm_t *vm, size_t sz)
+{
+	void vt_buffer_deconstructor(vm_t *vm, vt_buffer_t *vtb);
+	varval_t *vv = se_createobject(vm, VT_OBJECT_BUFFER, NULL, NULL, (void*)vt_buffer_deconstructor); //todo add the file deconstructor? :D
+	vt_buffer_t *vtb = (vt_buffer_t*)malloc(sizeof(vt_buffer_t) + sz);
+	vtb->size = sz;
+	vtb->data = ((char*)vtb) + sizeof(vt_buffer_t);
+	//vm_printf("spawning %s\n", cs->name);
+	vtb->type = -1;
+	vv->as.obj->obj = vtb;
+	return vv;
+}
+
+int sf_feof(vm_t *vm)
+{
+	varval_t *vv = se_argv(vm,0);
+	if(VV_TYPE(vv) != VAR_TYPE_OBJECT)
+	{
+		return se_error(vm, "not an object");
+	}
+	FILE *fp = (FILE*)vv->as.obj->obj;
+	se_addbool(vm,feof(fp) != 0);
+	return 1;
+}
+
+int sf_filesize(vm_t *vm)
+{
+	const char *n = se_getstring(vm,0);
+	FILE * fp = fopen(n,"rb");
+	size_t sz = 0;
+	if(fp)
+	{
+		fseek(fp,0,SEEK_END);
+		sz = ftell(fp);
+	}
+	se_addint(vm,sz);
+	return 1;
+}
+
+int sf_ftell(vm_t *vm)
+{
+	varval_t *vv = se_argv(vm,0);
+	if(VV_TYPE(vv) != VAR_TYPE_OBJECT)
+	{
+		return se_error(vm, "not an object");
+	}
+	FILE *fp = (FILE*)vv->as.obj->obj;
+	se_addint(vm,ftell(fp));
+	return 1;
+}
+
+int sf_fread(vm_t *vm)
+{
+	varval_t *vv = se_argv(vm,0);
+	if(VV_TYPE(vv) != VAR_TYPE_OBJECT)
+	{
+		return se_error(vm, "not an object");
+	}
+	size_t n = se_getint(vm,1);
+	FILE *fp = (FILE*)vv->as.obj->obj;
+	
+	varval_t *buffer = create_object_buffer_value(vm,n);
+	vt_buffer_t *vtb = (vt_buffer_t*)buffer->as.obj->obj;
+	size_t numread = fread(vtb->data,1,n,fp);
+	se_addobject(vm,buffer);
+	return 1;
+}
+
 int sf_fopen(vm_t *vm) {
 	const char *filename = se_getstring(vm, 0);
 	const char *mode = se_getstring(vm, 1);
@@ -757,8 +825,8 @@ stockfunction_t std_scriptfunctions[] = {
 	{ "int",sf_int },
 	{ "float",sf_float },
 	{"string",sf_string},
-	{ "read_text_file", sf_read_text_file },
-	{ "write_text_file", sf_write_text_file },
+	{ "file_get_contents", sf_read_text_file },
+	{ "file_put_contents", sf_write_text_file },
 	//{ "rename", sf_rename },
 	//{ "remove", sf_remove },
 	{ "listdir", sf_listdir },
@@ -768,6 +836,10 @@ stockfunction_t std_scriptfunctions[] = {
 	{ "print", sf_print },
 	{ "println", sf_println },
 	{ "fopen", sf_fopen },
+	{ "filesize", sf_filesize },
+	{ "feof", sf_feof },
+	{ "ftell", sf_ftell },
+	{ "fread", sf_fread },
 	{ "fwritevalue", sf_fwritevalue },
 	{ "strpos", sf_strpos },
 	//{ "tolower", sf_tolower },

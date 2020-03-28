@@ -15,19 +15,21 @@ int(*g_printf_hook)(const char *, ...) = (int(*)(const char*, ...))printf;
 
 void dynaddn(dynstring *s, const char *str, size_t n)
 {
+#if 0 //binary safe
         int sl = strlen(str);
         if (n >= sl)
                 n = sl;
-
+#endif
         if (*s == NULL)
                 *s = dynalloc(n);
 
-        for (int i = 0; i < n; ++i)
+        for (size_t i = 0; i < n; ++i)
         {
                 dynpush(s, *(char*)(str + i));
         }
 }
 
+//binary unsafe, it won't change the existing data, but won't add any data past \0
 void dynadd(dynstring *s, const char *str)
 {
         dynaddn(s, str, strlen(str));

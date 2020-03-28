@@ -26,6 +26,7 @@ DYN_INLINE DYN_STATIC dynstring dynalloc(int n)
 	return (dynstring)&d->buf[0];
 }
 
+//not binary safe
 DYN_INLINE DYN_STATIC dynstring dynnew(const char* s)
 {
 	int strsz = strlen(s);
@@ -55,6 +56,7 @@ DYN_INLINE DYN_STATIC size_t dyncapacity(dynstring *s)
 
 DYN_INLINE DYN_STATIC size_t dynlen(dynstring *s)
 {
+	if(!s || !*s) return 0;
 	dynstringhdr_t *hdr = DYN_HDR(*s);
 	return hdr->size;
 }
@@ -74,7 +76,7 @@ DYN_INLINE DYN_STATIC void dynpush(dynstring *s, int i)
 
 		if (*s)
 		{
-			dynadd(&n, *s);
+			dynaddn(&n, *s, hdr->size);
 		}
 		dynpush(&n, i);
 		dynfree(s);
@@ -87,6 +89,7 @@ DYN_INLINE DYN_STATIC void dynpush(dynstring *s, int i)
 	}
 }
 
+//not binary safe, avoid using the formatted functions for binary data
 DYN_INLINE DYN_STATIC void dynaddf(dynstring *s, const char *fmt, ...)
 {
 #define NBUF (10)
