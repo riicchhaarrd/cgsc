@@ -21,3 +21,7 @@
 bin/cidscropt
 todo.txt
 *.res
+vs/Debug/gsc.vcxproj.FileListAbsolute.txt
+vs/Release/gsc.vcxproj.FileListAbsolute.txt
+vs/Standalone Debug/gsc.vcxproj.FileListAbsolute.txt
+vs/Standalone Release/gsc.vcxproj.FileListAbsolute.txt
