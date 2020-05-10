@@ -7,8 +7,8 @@
 #include "dynarray.h"
 #include "dynstack.h"
 
-//#define VM_STACK_SIZE (65000)
-#define VM_STACK_SIZE (1024 * 1024 * 5)
+#define VM_STACK_SIZE (65000)
+//#define VM_STACK_SIZE (1024 * 1024 * 5)
 
 typedef enum {
 	REG_A,
